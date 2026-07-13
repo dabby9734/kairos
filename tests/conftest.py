@@ -50,3 +50,28 @@ def beta_json():
             }
         ],
     }
+
+
+@pytest.fixture
+def config():
+    from optimiser.config import DEFAULT_PREFERENCES, Config, Preferences
+
+    return Config(
+        acad_year="2026-2027",
+        semester=1,
+        balloted_types=["TUT", "LAB", "REC", "SEC"],
+        modules={"ALPHA": {"LEC": 2, "TUT": 4}, "BETA": 3},
+        fixed={"BETA": {"LEC": "1"}},
+        priority=["ALPHA", "BETA"],
+        preferences=Preferences(
+            earliest_start=600,
+            latest_end=1080,
+            max_difficulty_per_day=8,
+            lunch_start=660,
+            lunch_end=840,
+            lunch_minutes=60,
+            weights=dict(DEFAULT_PREFERENCES["weights"]),
+        ),
+        alternatives_per_module=4,
+        top_n=5,
+    )
