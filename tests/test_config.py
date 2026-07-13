@@ -63,3 +63,13 @@ def test_load_config_rejects_bad_difficulty(tmp_path):
 def test_load_config_missing_file(tmp_path):
     with pytest.raises(SystemExit):
         load_config(tmp_path / "nope.yaml")
+
+
+def test_load_config_empty_file(tmp_path):
+    with pytest.raises(SystemExit):
+        load_config(write(tmp_path, ""))
+
+
+def test_load_config_missing_required_key(tmp_path):
+    with pytest.raises(SystemExit):
+        load_config(write(tmp_path, BASE.replace("acad_year: 2026-2027\n", "")))
