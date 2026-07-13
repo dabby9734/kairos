@@ -21,6 +21,17 @@ def test_prepare_groups_applies_fixed(groups):
     assert [c.class_no for c in beta_lec.choices] == ["1"]  # config.fixed pins it
 
 
+def test_prepare_groups_warns_for_free_nonballoted_group(capsys, beta_json, config):
+    config.fixed = {}
+    gs = build_groups("BETA", semester_timetable(beta_json, 1))
+    prepared = prepare_groups(gs, config)
+    beta_lec = next(g for g in prepared if g.key == ("BETA", "Lecture"))
+    assert [c.class_no for c in beta_lec.choices] == ["1", "2"]
+    out = capsys.readouterr().out
+    assert "warning:" in out
+    assert "BETA" in out
+
+
 def test_prepare_groups_bad_fixed(alpha_json, config):
     config.fixed = {"ALPHA": {"LEC": "99"}}
     gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))

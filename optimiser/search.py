@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import heapq
 import itertools
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .model import LESSON_ABBREV, ChoiceGroup
 from .scoring import score_assignment

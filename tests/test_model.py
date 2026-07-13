@@ -61,3 +61,9 @@ def test_choice_clash_and_footprint():
     assert a.footprint == c.footprint
     d = Choice("ALPHA", "Tutorial", "03", (sess(day="Friday"),))
     assert a.footprint != d.footprint
+
+
+def test_footprint_distinguishes_online():
+    online = Choice("ALPHA", "Lecture", "1", (sess(venue="E-Learn_C"),))
+    physical = Choice("ALPHA", "Lecture", "2", (sess(venue="LT11"),))
+    assert online.footprint != physical.footprint

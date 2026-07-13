@@ -63,7 +63,7 @@ class Choice:
 
     @property
     def footprint(self) -> frozenset:
-        return frozenset((s.day, s.start, s.end, s.weeks) for s in self.sessions)
+        return frozenset((s.day, s.start, s.end, s.weeks, s.online) for s in self.sessions)
 
     def clashes(self, other: "Choice") -> bool:
         return any(a.clashes(b) for a in self.sessions for b in other.sessions)
