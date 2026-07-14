@@ -91,3 +91,13 @@ def test_config_from_dict_matches_load(tmp_path):
     assert from_dict.acad_year == from_file.acad_year
     assert from_dict.preferences.earliest_start == from_file.preferences.earliest_start
     assert from_dict.priority == from_file.priority
+
+
+def test_load_config_parses_locked(tmp_path):
+    cfg = load_config(write(tmp_path, BASE + "\nlocked:\n  ALPHA: {TUT: '02'}\n"))
+    assert cfg.locked == {"ALPHA": {"TUT": "02"}}
+
+
+def test_load_config_defaults_locked_empty(tmp_path):
+    cfg = load_config(write(tmp_path, BASE))
+    assert cfg.locked == {}

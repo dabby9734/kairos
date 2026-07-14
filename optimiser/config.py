@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -49,6 +49,7 @@ class Config:
     alternatives_per_module: int
     top_n: int
     max_arrangements: int = 50
+    locked: dict = field(default_factory=dict)  # code -> dict[abbrev, class_no]
 
     def difficulty(self, module: str, lesson_type_full: str) -> int:
         spec = self.modules.get(module, 3)
@@ -110,6 +111,7 @@ def config_from_dict(data, source: str = "config") -> Config:
         alternatives_per_module=int(data.get("alternatives_per_module", 4)),
         top_n=int(data.get("top_n", 5)),
         max_arrangements=int(data.get("max_arrangements", 50)),
+        locked=data.get("locked") or {},
     )
 
 
