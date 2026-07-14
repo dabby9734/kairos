@@ -7,7 +7,6 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Label, ListItem, ListView, Static, TabbedContent, TabPane
 
-from ..model import LESSON_ABBREV
 from ..output import render_breakdown, render_snake, render_week, share_url
 from .widgets import Slider
 
@@ -105,6 +104,8 @@ class OptimiserApp(App):
             tt_list.append(ListItem(Label(f"#{i + 1}  {total:+.1f}")))
         if self.selected >= len(top):
             self.selected = 0
+        if top:
+            tt_list.index = min(self.selected, len(top) - 1)
         self._refresh_detail()
 
     def _refresh_detail(self) -> None:
@@ -135,7 +136,7 @@ class OptimiserApp(App):
         elif kind == "pref":
             self.state.set_pref(rest, event.value)
         elif kind == "diff":
-            module, abbrev = rest.split(":")
+            module, abbrev = rest.split(":", 1)
             self.state.set_difficulty(module, abbrev, event.value)
         self._refresh_results()
 
@@ -182,6 +183,7 @@ class OptimiserApp(App):
         lst.clear()
         for m in self.state.config.priority:
             lst.append(ListItem(Label(m)))
+        lst.index = self.state.config.priority.index(module)  # highlight follows the moved module
         if self.ballot_mode:
             self._refresh_detail()
 

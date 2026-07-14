@@ -1,6 +1,7 @@
 import copy
 
 import pytest
+from textual.widgets import ListView
 
 from optimiser.api import build_groups, semester_timetable
 from optimiser.tui.app import OptimiserApp
@@ -19,12 +20,32 @@ def state(alpha_json, beta_json, config):
 async def test_slider_adjust_reranks(state, tmp_path):
     app = OptimiserApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
-        slider = app.query(Slider).first()
+        slider = next(s for s in app.query(Slider) if s.key == "weight:free_days")
         app.set_focus(slider)
-        before = slider.value
+        before_weight = app.state.config.preferences.weights["free_days"]
+        before_totals = [t for t, _, _ in app.state.top_timetables()]
         await pilot.press("right")
-        assert slider.value == before + 1  # widget adjusted
-        assert app.state.config.preferences.weights  # state still coherent
+        assert slider.value == before_weight + 1  # widget adjusted
+        # state actually re-ranked: weight applied and totals changed
+        assert app.state.config.preferences.weights["free_days"] == before_weight + 1
+        after_totals = [t for t, _, _ in app.state.top_timetables()]
+        assert after_totals != before_totals
+
+
+async def test_priority_reorder_follows_module(state, tmp_path):
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        lst = app.query_one("#priority-list", ListView)
+        app.set_focus(lst)
+        last_index = len(app.state.config.priority) - 1
+        lst.index = last_index
+        moved_module = app.state.config.priority[last_index]
+        await pilot.press("[")
+        # the module actually moved up one position
+        assert app.state.config.priority.index(moved_module) == last_index - 1
+        # the highlight follows the moved module (this is what makes consecutive
+        # moves work; fails against the pre-fix code where lst.index is stale)
+        assert app.state.config.priority[lst.index] == moved_module
 
 
 async def test_toggle_ballot_view(state, tmp_path):

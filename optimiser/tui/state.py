@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .. import ballot
 from ..model import LESSON_ABBREV
@@ -107,7 +107,7 @@ class AppState:
             "semester": self.config.semester,
             "balloted_types": list(self.config.balloted_types),
             "modules": {
-                code: {"difficulty": spec if isinstance(spec, dict) else spec}
+                code: {"difficulty": spec}
                 for code, spec in self.config.modules.items()
             },
             "fixed": self.config.fixed,
