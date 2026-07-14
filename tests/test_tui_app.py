@@ -67,3 +67,52 @@ async def test_save_config_writes_file(state, tmp_path):
     import yaml
 
     assert yaml.safe_load(path.read_text())["semester"] == state.config.semester
+
+
+async def test_copy_link_uses_os_clipboard(state, tmp_path, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        "optimiser.tui.app._os_clipboard_copy",
+        lambda text: captured.setdefault("url", text) or True,
+    )
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.press("c")
+    assert "url" in captured
+    assert captured["url"].startswith("https://nusmods.com/timetable/sem-1/share?")
+
+
+async def test_number_key_switches_tab(state, tmp_path):
+    from textual.widgets import TabbedContent
+
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.press("3")
+        assert app.query_one(TabbedContent).active == "tab-times"
+        await pilot.press("1")
+        assert app.query_one(TabbedContent).active == "tab-weights"
+
+
+async def test_slider_updown_moves_focus(state, tmp_path):
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        weight_sliders = [s for s in app.query(Slider) if (s.key or "").startswith("weight:")]
+        first, second = weight_sliders[0], weight_sliders[1]
+        app.set_focus(first)
+        await pilot.press("down")
+        assert app.focused is second  # down → next slider
+        await pilot.press("up")
+        assert app.focused is first  # up → previous slider
+        # up at the top clamps (stays put, does not leave the group)
+        await pilot.press("up")
+        assert app.focused is first
+
+
+async def test_copy_link_failure_surfaces_url(state, tmp_path, monkeypatch):
+    notes = []
+    monkeypatch.setattr("optimiser.tui.app._os_clipboard_copy", lambda text: False)
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    monkeypatch.setattr(app, "notify", lambda msg, **kw: notes.append(msg))
+    async with app.run_test() as pilot:
+        await pilot.press("c")
+    assert any("nusmods.com/timetable/sem-1/share?" in n for n in notes)

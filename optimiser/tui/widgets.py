@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from textual.message import Message
 from textual.widget import Widget
+from textual.widgets import TabPane
 
 BAR_WIDTH = 8
 
@@ -56,3 +57,17 @@ class Slider(Widget, can_focus=True):
         elif event.key == "right":
             self.adjust(1)
             event.stop()
+        elif event.key in ("up", "down"):
+            self._focus_sibling(1 if event.key == "down" else -1)
+            event.stop()
+
+    def _focus_sibling(self, delta: int) -> None:
+        """Move focus to the previous/next Slider within the same tab, clamped
+        at the ends so up/down stays inside the control group."""
+        pane = next((a for a in self.ancestors if isinstance(a, TabPane)), None)
+        scope = pane if pane is not None else self.screen
+        sliders = list(scope.query(Slider))
+        if self in sliders:
+            j = sliders.index(self) + delta
+            if 0 <= j < len(sliders):
+                sliders[j].focus()
