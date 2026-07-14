@@ -15,9 +15,10 @@ The second is clamped to `span_end <= span_start` and dropped from the strip.
 It survives only in the agenda text below the day (an earlier fix guaranteed the
 agenda never loses it), so the user sees the agenda line but no bar.
 
-Because the optimiser forbids real clashes, **every** overlap that reaches the
-grid is a genuine non-clashing alternating-weeks pair — safe to display in
-parallel.
+Because the optimiser forbids real clashes, **every** time overlap that reaches
+the grid is a genuine non-clashing alternating-weeks pair — safe to display in
+parallel. (Two classes clash only when their weeks intersect; disjoint-week
+classes may share a clock slot without clashing.)
 
 ## Solution: lane-based rendering
 
@@ -44,23 +45,31 @@ For each weekday:
    class_no, venue, online, start, end)`, where `start_h = start // 60` and
    `end_h = (end + 59) // 60`. Record every block in the agenda first (preserving
    the "never lose a class" invariant).
-2. Sort blocks by `(start_h, start)`.
-3. **Lane assignment (first-fit):** maintain a list of lanes, each tracking its
-   own `cursor` (next free hour cell, initialised to `first_hour`). For each
-   block, compute its drawable span (see step 4) and place it in the **first lane
-   whose `cursor <= span_start`**; if no existing lane qualifies, append a new
-   lane. First-fit from the top of the lane list, so lane order is deterministic.
-4. **Drawable span (unchanged from today, applied per lane):**
-   `span_start = max(start_h, first_hour, lane.cursor)`,
-   `span_end = min(end_h, last_hour + 1)`. If `span_end <= span_start` the block
-   is undrawable in the grid — it is **not** assigned a lane, but it is already in
-   the agenda, so it is never lost. (This keeps the current out-of-range/edge
-   behaviour.)
-   - Note: because lane assignment considers `lane.cursor`, and a block only
-     joins a lane whose cursor `<= span_start`, the clamp `max(..., lane.cursor)`
-     never actually pushes a block forward within its chosen lane — the drift
-     clamp still guards the half-hour back-to-back case *within* a lane exactly
-     as today.
+2. Sort blocks by `(start, end)` (actual minute times).
+3. **Lane assignment (first-fit by TIME overlap):** maintain a list of lanes,
+   each tracking `last_end` (the latest session **end minute** placed in it, so
+   far). Two blocks share a lane only if their real time intervals do **not**
+   overlap. For each block, place it in the **first lane whose `last_end <=
+   block.start`** (blocks are sorted by start, so this is exactly "no overlap
+   with anything already in the lane"); if no existing lane qualifies, append a
+   new lane. Then set that lane's `last_end = block.end`. First-fit from the top,
+   so lane order is deterministic.
+   - **Overlap means real time overlap, not rounded-cell adjacency.** Back-to-back
+     classes (`a.end == b.start`, e.g. 12:00–13:30 then 13:30–15:00) do **not**
+     overlap and stay in the **same** lane, even though their ceil-rounded hour
+     cells touch. Only classes whose minute intervals genuinely overlap (the
+     alternating-week same-slot case) get separate lanes. This preserves the
+     existing single-row layout for sequential classes.
+4. **Drawing within a lane (unchanged from today):** each lane renders exactly
+   like the current single row, with its **own** `cursor` (hour cell, initialised
+   to `first_hour`). Per block: `span_start = max(start_h, first_hour,
+   cursor)`, `span_end = min(end_h, last_hour + 1)`; if `span_end <= span_start`
+   the block is undrawable (out of grid range, or its rounded cell already
+   consumed by an earlier same-lane block) — no strip, but it is already in the
+   agenda so it is never lost. The `max(..., cursor)` clamp still prevents
+   sideways drift *within* a lane for ceil-rounded back-to-back classes, exactly
+   as today. (Undrawability is decided here, at draw time, after the lane is
+   chosen — a block always joins a lane; it may simply produce no visible strip.)
 5. **Render:** one `Text` row per lane. The **first lane** row is prefixed with
    `f"{day[:3]:5}"`; every subsequent lane row is prefixed with 5 spaces. Within
    a lane, bars are laid out identically to today (leading spaces to
@@ -69,7 +78,8 @@ For each weekday:
 6. After all lane rows, append the agenda lines (sorted by start), unchanged.
 
 Days with no overlap yield exactly **one** lane row — visually identical to
-today. Lane count equals the maximum cell-overlap depth on that day.
+today. Lane count equals the maximum number of classes whose time intervals
+mutually overlap at any instant on that day.
 
 ### Preserved invariants
 
