@@ -150,3 +150,27 @@ def test_class_warnings_clean_timetable_is_empty(config):
         ("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", _sess("Monday", 780, 840)),
     }
     assert class_warnings(a, config) == []
+
+
+def test_class_warnings_pairing_suppressed_when_module_already_paired(config):
+    # ALPHA lecture Mon; tutorial Mon (paired) earns the module's bonus, so the
+    # unpaired Tue lab must NOT be flagged — moving it would not change the score.
+    a = {
+        ("ALPHA", "Lecture"): _choice("ALPHA", "Lecture", "1", _sess("Monday", 600, 720)),
+        ("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", _sess("Monday", 780, 840)),
+        ("ALPHA", "Laboratory"): _choice("ALPHA", "Laboratory", "L1", _sess("Tuesday", 600, 660)),
+    }
+    assert not any("same-day" in w for w in class_warnings(a, config))
+
+
+def test_class_warnings_pairing_flags_all_when_module_fully_unpaired(config):
+    # ALPHA lecture Mon; tutorial AND lab both on Tue -> module earns no pairing
+    # bonus, so both are flagged (moving either to Mon would raise the score).
+    a = {
+        ("ALPHA", "Lecture"): _choice("ALPHA", "Lecture", "1", _sess("Monday", 600, 720)),
+        ("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", _sess("Tuesday", 600, 660)),
+        ("ALPHA", "Laboratory"): _choice("ALPHA", "Laboratory", "L1", _sess("Tuesday", 720, 780)),
+    }
+    warnings = class_warnings(a, config)
+    assert "⚠ ALPHA TUT not same-day as its lecture" in warnings
+    assert "⚠ ALPHA LAB not same-day as its lecture" in warnings

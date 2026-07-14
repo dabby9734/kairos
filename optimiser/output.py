@@ -92,23 +92,31 @@ def class_warnings(assignment: dict, config) -> list[str]:
                 f"⚠ {day} exceeds max difficulty ({tough[day]} > {prefs.max_difficulty_per_day})"
             )
 
-    # same_day_pairing: non-lecture class whose module has a campus lecture but
-    # sits on none of that lecture's days. No campus lecture -> pairing is
-    # impossible, so not a violation.
+    # same_day_pairing: mirror scoring's per-MODULE bonus (capped 1/module). A
+    # module with a campus lecture earns the bonus if ANY of its non-lecture
+    # classes shares a lecture day, so warn only for modules that earn ZERO
+    # pairing — where moving any non-lecture class to a lecture day would
+    # actually raise the score. Modules with no campus lecture can't pair
+    # (not a violation).
     lecture_days: dict = {}
     for choice in assignment.values():
         if choice.lesson_type == "Lecture":
             lecture_days.setdefault(choice.module, set()).update(
                 s.day for s in choice.sessions if not s.online
             )
-    unpaired = []
+    nonlecture_by_module: dict = {}
     for (module, lesson_type), choice in assignment.items():
         if lesson_type == "Lecture":
             continue
+        nonlecture_by_module.setdefault(module, []).append((lesson_type, choice))
+    unpaired = []
+    for module, classes in nonlecture_by_module.items():
         days = lecture_days.get(module)
         if not days:
             continue
-        if not any(s.day in days for s in choice.sessions):
+        if any(s.day in days for _, choice in classes for s in choice.sessions):
+            continue  # module already earns its pairing bonus; score is maxed
+        for lesson_type, _ in classes:
             abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
             unpaired.append((module, abbrev))
     for module, abbrev in sorted(unpaired):
