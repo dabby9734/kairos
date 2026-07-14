@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .model import LESSON_ABBREV
+from .model import LESSON_ABBREV, week_label
 
 BALLOT_TYPE_ORDER = ["Tutorial", "Sectional Teaching", "Recitation", "Laboratory"]
 
@@ -23,12 +23,18 @@ def ranked_options(result, config) -> dict:
     for (module, lesson_type), fp_members in result.members.items():
         if LESSON_ABBREV.get(lesson_type) not in config.balloted_types:
             continue
-        scored = []
+        # Merge footprints that share a slot signature (day/time/online), so
+        # same-slot week-twins are interchangeable in the ballot too.
+        by_slot: dict = {}
         for fp, choices in fp_members.items():
             best = result.best_by_footprint.get((module, lesson_type, fp))
             if best is None:
                 continue  # never part of any clash-free timetable
-            scored.append((best, choices))
+            sig = frozenset((s.day, s.start, s.end, s.online) for s in choices[0].sessions)
+            slot = by_slot.setdefault(sig, {"best": best, "choices": []})
+            slot["best"] = max(slot["best"], best)
+            slot["choices"].extend(choices)
+        scored = [(slot["best"], slot["choices"]) for slot in by_slot.values()]
         scored.sort(key=lambda item: (-item[0], item[1][0].class_no))
 
         options = []

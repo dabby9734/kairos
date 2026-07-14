@@ -82,3 +82,26 @@ def test_snake_cap(config):
         ("ALPHA", "Tutorial"): [opt("ALPHA", "Tutorial", f"{i:02d}", "A") for i in range(30)],
     }
     assert len(snake(options, config)) == 20
+
+
+def test_ranked_options_groups_week_twins(config):
+    from optimiser.model import Choice, Session
+    from optimiser.search import SearchResult
+    from optimiser.ballot import ranked_options
+
+    odd = frozenset({1, 3, 5})
+    even = frozenset({2, 4, 6})
+    c_odd = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 840, 900, odd, "COM1"),))
+    c_even = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 840, 900, even, "COM1"),))
+    members = {
+        ("ALPHA", "Tutorial"): {c_odd.footprint: [c_odd], c_even.footprint: [c_even]}
+    }
+    best = {
+        ("ALPHA", "Tutorial", c_odd.footprint): 5.0,
+        ("ALPHA", "Tutorial", c_even.footprint): 5.0,
+    }
+    result = SearchResult(top=[], best_by_footprint=best, members=members, evaluated=2)
+    options = ranked_options(result, config)[("ALPHA", "Tutorial")]
+    # 01 and 02 are the same slot (Mon 1400-1500), different weeks -> interchangeable
+    first = options[0]
+    assert "02" in first.tied_with or "01" in first.tied_with
