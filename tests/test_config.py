@@ -73,3 +73,18 @@ def test_load_config_empty_file(tmp_path):
 def test_load_config_missing_required_key(tmp_path):
     with pytest.raises(SystemExit):
         load_config(write(tmp_path, BASE.replace("acad_year: 2026-2027\n", "")))
+
+
+def test_config_from_dict_matches_load(tmp_path):
+    import yaml
+
+    from optimiser.config import config_from_dict, load_config
+
+    data = yaml.safe_load(BASE)
+    path = tmp_path / "config.yaml"
+    path.write_text(BASE)
+    from_dict = config_from_dict(data)
+    from_file = load_config(path)
+    assert from_dict.acad_year == from_file.acad_year
+    assert from_dict.preferences.earliest_start == from_file.preferences.earliest_start
+    assert from_dict.priority == from_file.priority
