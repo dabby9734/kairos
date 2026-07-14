@@ -89,3 +89,41 @@ def test_total_is_weighted_sum(config):
     total, breakdown = score_assignment(cs, config)
     assert total == pytest.approx(sum(w for _, w in breakdown.values()))
     assert breakdown["free_days"][1] == pytest.approx(4 * config.preferences.weights["free_days"])
+
+
+def test_tough_day_peaks_reports_peak_week(config):
+    from optimiser.scoring import tough_day_peaks
+
+    w13 = frozenset({1, 3})
+    cs = [
+        Choice("ALPHA", "Tutorial", "01", (Session("Monday", 600, 660, w13, "COM1"),)),
+        Choice("BETA", "Laboratory", "L1", (Session("Monday", 720, 780, w13, "COM1"),)),
+        Choice("BETA", "Recitation", "R1", (Session("Monday", 840, 900, w13, "COM1"),)),
+    ]
+    # cap is 8; all three share weeks 1&3, so week 1 load = 4+3+3 = 10.
+    assert tough_day_peaks(cs, config) == {"Monday": 10}
+
+
+def test_tough_days_week_aware_ignores_disjoint_weeks(config):
+    # Naive Monday difficulty 4+3+3 = 10 > cap 8, but the diff-3 recitation runs on
+    # weeks disjoint from the other two, so no single week exceeds 8 (peak = 7).
+    w13 = frozenset({1, 3})
+    w24 = frozenset({2, 4})
+    cs = [
+        choice("ALPHA", "Tutorial", "01", Session("Monday", 600, 660, w13, "COM1")),
+        choice("BETA", "Laboratory", "L1", Session("Monday", 720, 780, w13, "COM1")),
+        choice("BETA", "Recitation", "R1", Session("Monday", 840, 900, w24, "COM1")),
+    ]
+    assert raw(cs, config, "tough_days") == 0
+
+
+def test_tough_days_week_aware_penalises_overlapping_weeks(config):
+    # Same three classes, but the recitation now shares weeks 1&3 -> week 1 load is
+    # 4+3+3 = 10 > cap 8 -> penalty of (10 - 8) = 2.
+    w13 = frozenset({1, 3})
+    cs = [
+        choice("ALPHA", "Tutorial", "01", Session("Monday", 600, 660, w13, "COM1")),
+        choice("BETA", "Laboratory", "L1", Session("Monday", 720, 780, w13, "COM1")),
+        choice("BETA", "Recitation", "R1", Session("Monday", 840, 900, w13, "COM1")),
+    ]
+    assert raw(cs, config, "tough_days") == pytest.approx(-2)
