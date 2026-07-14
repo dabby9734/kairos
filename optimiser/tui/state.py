@@ -6,6 +6,7 @@ from .. import ballot
 from ..model import LESSON_ABBREV
 from ..search import (
     EnumeratedSpace,
+    _score_combos,
     enumerate_clashfree,
     find_irreconcilable,
     prepare_groups,
@@ -61,10 +62,12 @@ class AppState:
         return state
 
     def retune(self):
-        self.result = rank(self.space, self.config)
-        self.arrangements = rank_arrangements(
-            self.space, self.config, limit=self.config.top_n or None
-        )
+        # Score every combo once, then share it with both consumers (M5). The
+        # arrangement list is uncapped — show ALL distinct arrangements (Fix A);
+        # top_n only sizes result.top (the raw timetable list).
+        scored = _score_combos(self.space, self.config)
+        self.result = rank(self.space, self.config, scored=scored)
+        self.arrangements = rank_arrangements(self.space, self.config, limit=None, scored=scored)
         return self.result
 
     def is_empty(self) -> bool:

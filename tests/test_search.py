@@ -98,6 +98,18 @@ def test_search_equals_enumerate_then_rank(groups, config):
     assert split.evaluated == combined.evaluated
 
 
+def test_rank_scored_param_is_behavior_preserving(groups, config):
+    # rank must yield identical top/best_by_footprint whether or not a pre-scored
+    # list is supplied (Fix D / M5: score every combo only once per retune).
+    from optimiser.search import _score_combos
+    space = enumerate_clashfree(groups)
+    a = rank(space, config)
+    b = rank(space, config, scored=_score_combos(space, config))
+    assert [t for t, _, _ in a.top] == [t for t, _, _ in b.top]
+    assert a.best_by_footprint == b.best_by_footprint
+    assert a.evaluated == b.evaluated
+
+
 def test_enumerate_is_config_independent(groups, config):
     # Enumerated set does not depend on config; only ranking does.
     space = enumerate_clashfree(groups)
@@ -118,7 +130,19 @@ ALL_WEEKS = frozenset(range(1, 14))
 
 
 def _space(*combos):
-    return EnumeratedSpace(combos=tuple(combos), members={})
+    # Derive a members map mirroring enumerate_clashfree: (module, lesson_type) ->
+    # {footprint: sorted[Choice]}. Combos carry reps; this lets rank_arrangements
+    # expand footprints to member class numbers (venue-twins) in tests.
+    members: dict = {}
+    for combo in combos:
+        for c in combo:
+            bucket = members.setdefault((c.module, c.lesson_type), {}).setdefault(c.footprint, [])
+            if c not in bucket:
+                bucket.append(c)
+    for grp in members.values():
+        for fp in grp:
+            grp[fp] = sorted(grp[fp], key=lambda c: c.class_no)
+    return EnumeratedSpace(combos=tuple(combos), members=members)
 
 
 def test_rank_arrangements_collapses_week_twins(config):
@@ -152,6 +176,42 @@ def test_rank_arrangements_keeps_entangled_variants_separate(config):
     arrs = rank_arrangements(_space((a_odd, b_even), (a_even, b_odd)), config)
     assert len(arrs) == 2  # entangled -> not collapsed
     assert all(a.variant_count == 1 for a in arrs)
+
+
+def test_rank_arrangements_lists_venue_twins(config):
+    # Two class numbers at the SAME day/time/weeks but different venue share a
+    # footprint, so only one rep reaches combos. The SlotBid must still list BOTH
+    # class numbers (I1 / Fix B), while the Cartesian guard stays over footprints.
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    t_a = Choice("ALPHA", "Tutorial", "01", (Session("Tuesday", 540, 600, ALL_WEEKS, "COM1"),))
+    t_b = Choice("ALPHA", "Tutorial", "02", (Session("Tuesday", 540, 600, ALL_WEEKS, "COM2"),))
+    assert t_a.footprint == t_b.footprint  # venue not in footprint
+    space = EnumeratedSpace(
+        combos=((lec, t_a),),  # only the rep t_a is in combos
+        members={
+            ("ALPHA", "Lecture"): {lec.footprint: [lec]},
+            ("ALPHA", "Tutorial"): {t_a.footprint: [t_a, t_b]},
+        },
+    )
+    arrs = rank_arrangements(space, config)
+    assert len(arrs) == 1
+    tut_bid = next(b for b in arrs[0].bids if b.lesson_type == "Tutorial")
+    assert [n for n, _ in tut_bid.options] == ["01", "02"]
+
+
+def test_rank_arrangements_scored_param_is_behavior_preserving(config):
+    # Passing a pre-scored list must produce identical arrangements (Fix D / M5).
+    from optimiser.search import _score_combos
+    odd = frozenset({1, 3, 5})
+    even = frozenset({2, 4, 6})
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    tut_odd = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 840, 900, odd, "COM1"),))
+    tut_even = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 840, 900, even, "COM1"),))
+    space = _space((lec, tut_odd), (lec, tut_even))
+    a = rank_arrangements(space, config)
+    b = rank_arrangements(space, config, scored=_score_combos(space, config))
+    key = lambda arrs: [(x.score, [(bd.module, bd.lesson_type, bd.options) for bd in x.bids]) for x in arrs]
+    assert key(a) == key(b)
 
 
 def test_rank_arrangements_ranks_by_best_and_limits(config):

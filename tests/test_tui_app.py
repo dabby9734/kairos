@@ -146,7 +146,10 @@ async def test_detail_shows_bids_block(state, tmp_path):
         console = Console()
         with console.capture() as cap:
             console.print(detail._Static__content)  # textual 8.2.8: read raw stored content
-        assert "Bids" in cap.get()  # the interchangeable-bids block is present
+        rendered = cap.get()
+        assert "Bids" in rendered  # the interchangeable-bids block is present
+        # assert on ACTUAL bid content: the balloted ALPHA Tutorial slot renders
+        assert "ALPHA TUT" in rendered
 
 
 async def test_all_criteria_met_shown_when_no_warnings(state, tmp_path, monkeypatch):

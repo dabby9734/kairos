@@ -69,11 +69,35 @@ def test_ballot_helpers(state):
 
 
 def test_top_arrangements_returns_arrangements(state):
-    from optimiser.search import Arrangement
+    from optimiser.search import Arrangement, SlotBid
 
     arrs = state.top_arrangements()
     assert arrs and all(isinstance(a, Arrangement) for a in arrs)
-    assert all(hasattr(a, "bids") and hasattr(a, "variant_count") for a in arrs)
+    assert all(isinstance(a.bids, list) for a in arrs)
+    # the balloted ALPHA Tutorial slot must actually produce a bid somewhere
+    assert any(a.bids for a in arrs)
+    assert all(isinstance(b, SlotBid) for a in arrs for b in a.bids)
+
+
+def test_arrangements_not_capped_to_top_n(config):
+    # Fix A: the arrangement list is truly unlimited, NOT truncated to top_n.
+    from optimiser.model import Choice, ChoiceGroup, Session
+
+    cfg = copy.deepcopy(config)
+    cfg.top_n = 5
+    cfg.fixed = {}
+    all_weeks = frozenset(range(1, 14))
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    choices = [
+        Choice("ALPHA", "Tutorial", f"{i:02d}", (Session(day, 540, 600, all_weeks, "COM1"),))
+        for i, day in enumerate(days, start=1)
+    ]
+    groups = [ChoiceGroup("ALPHA", "Tutorial", choices)]
+    state = AppState.from_parts(cfg, groups)
+    arrs = state.top_arrangements()
+    # six distinct-day tutorials -> six distinct arrangements, exceeding top_n=5
+    assert len(arrs) == 6
+    assert len(arrs) > state.config.top_n
 
 
 def test_to_config_yaml_roundtrips(tmp_path, state):

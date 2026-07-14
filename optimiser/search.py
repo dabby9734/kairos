@@ -14,6 +14,7 @@ class SearchResult:
     best_by_footprint: dict
     members: dict
     evaluated: int = 0
+    rests: dict = None
 
 
 def prepare_groups(groups: list, config) -> list:
@@ -89,17 +90,34 @@ def enumerate_clashfree(groups: list) -> EnumeratedSpace:
     return EnumeratedSpace(tuple(combos), members_out)
 
 
-def rank(space: EnumeratedSpace, config) -> SearchResult:
-    heap: list = []
-    best_fp: dict = {}
-    seq = 0
+def _score_combos(space: EnumeratedSpace, config) -> list:
+    """Score every clash-free combo exactly once. Returns
+    [(total, breakdown, assignment, combo), ...] so callers (rank,
+    rank_arrangements, state.retune) can share a single scoring pass (M5)."""
+    scored = []
     for combo in space.combos:
         total, breakdown = score_assignment(list(combo), config)
+        assignment = {(c.module, c.lesson_type): c for c in combo}
+        scored.append((total, breakdown, assignment, combo))
+    return scored
+
+
+def rank(space: EnumeratedSpace, config, scored=None) -> SearchResult:
+    if scored is None:
+        scored = _score_combos(space, config)
+    heap: list = []
+    best_fp: dict = {}
+    rests: dict = {}
+    seq = 0
+    for total, breakdown, assignment, combo in scored:
         for c in combo:
             key = (c.module, c.lesson_type, c.footprint)
             if total > best_fp.get(key, float("-inf")):
                 best_fp[key] = total
-        assignment = {(c.module, c.lesson_type): c for c in combo}
+            # rest-of-timetable choices, excluding this choice's GROUP by key
+            gkey = (c.module, c.lesson_type)
+            rest = frozenset(o for o in combo if (o.module, o.lesson_type) != gkey)
+            rests.setdefault(key, set()).add(rest)
         seq += 1
         item = (total, seq, breakdown, assignment)
         if len(heap) < config.top_n:
@@ -107,11 +125,12 @@ def rank(space: EnumeratedSpace, config) -> SearchResult:
         else:
             heapq.heappushpop(heap, item)
 
+    rests = {k: frozenset(v) for k, v in rests.items()}
     top = [
         (total, breakdown, assignment)
         for total, _, breakdown, assignment in sorted(heap, key=lambda item: -item[0])
     ]
-    return SearchResult(top, best_fp, space.members, len(space.combos))
+    return SearchResult(top, best_fp, space.members, len(space.combos), rests=rests)
 
 
 @dataclass(frozen=True)
@@ -140,16 +159,28 @@ def _arrangement_key(combo) -> frozenset:
     )
 
 
-def _make_arrangement(entry, slot_opts, config, variant_count) -> "Arrangement":
+def _make_arrangement(entry, slot_opts, config, variant_count, space) -> "Arrangement":
     total, breakdown, assignment, _combo = entry
     bids = []
-    for (module, lesson_type), by_no in slot_opts.items():
+    for (module, lesson_type), by_fp in slot_opts.items():
         if LESSON_ABBREV.get(lesson_type, lesson_type) not in config.balloted_types:
             continue
-        options = tuple(
-            (class_no, week_label(weeks)) for class_no, weeks in sorted(by_no.items())
-        )
-        bids.append(SlotBid(module, lesson_type, options))
+        members = space.members.get((module, lesson_type), {})
+
+        def _rep_no(fp):
+            sibs = members.get(fp)
+            return sibs[0].class_no if sibs else ""
+
+        options = []
+        # iterate footprints in a stable order, then expand each to ALL member
+        # class numbers (venue-twins share a footprint — I1 / Fix B)
+        for fp in sorted(by_fp, key=_rep_no):
+            weeks = by_fp[fp]
+            label = week_label(weeks)
+            for sib in members.get(fp, []):
+                options.append((sib.class_no, label))
+        options.sort(key=lambda o: o[0])  # deterministic by class_no (M4)
+        bids.append(SlotBid(module, lesson_type, tuple(options)))
     bids.sort(key=lambda b: (b.module, b.lesson_type))
     return Arrangement(
         score=total, breakdown=breakdown, assignment=assignment,
@@ -157,17 +188,15 @@ def _make_arrangement(entry, slot_opts, config, variant_count) -> "Arrangement":
     )
 
 
-def rank_arrangements(space, config, limit=None) -> list:
+def rank_arrangements(space, config, limit=None, scored=None) -> list:
     """Collapse clash-free timetables that share a slot layout (differing only by
     interchangeable same-slot week-twins) into ranked Arrangements. Twins are
     offered as free per-slot bids only when the group's clash-free combos form a
     full Cartesian product; otherwise the combos are kept as separate
-    arrangements (soundness — see design doc)."""
-    scored = []  # (total, breakdown, assignment, combo)
-    for combo in space.combos:
-        total, breakdown = score_assignment(list(combo), config)
-        assignment = {(c.module, c.lesson_type): c for c in combo}
-        scored.append((total, breakdown, assignment, combo))
+    arrangements (soundness — see design doc). Slot bids additionally list
+    same-footprint venue-twins expanded from space.members (I1)."""
+    if scored is None:
+        scored = _score_combos(space, config)
 
     groups: dict = {}
     for entry in scored:
@@ -175,23 +204,25 @@ def rank_arrangements(space, config, limit=None) -> list:
 
     arrangements = []
     for entries in groups.values():
-        slot_opts: dict = {}  # (module, lesson_type) -> {class_no: weeks}
+        # keyed by FOOTPRINT (not class_no): the Cartesian soundness guard must
+        # count week-variants/footprints, never the venue-expanded class-number set
+        slot_opts: dict = {}  # (module, lesson_type) -> {footprint: weeks}
         for _t, _b, _a, combo in entries:
             for c in combo:
-                slot_opts.setdefault((c.module, c.lesson_type), {})[c.class_no] = c.sessions[0].weeks
+                slot_opts.setdefault((c.module, c.lesson_type), {})[c.footprint] = c.sessions[0].weeks
         product = 1
-        for by_no in slot_opts.values():
-            product *= len(by_no)
+        for by_fp in slot_opts.values():
+            product *= len(by_fp)
         if product == len(entries):  # independent -> collapse
             best = min(entries, key=lambda e: (-e[0], tuple(sorted(c.class_no for c in e[3]))))
-            arrangements.append(_make_arrangement(best, slot_opts, config, len(entries)))
+            arrangements.append(_make_arrangement(best, slot_opts, config, len(entries), space))
         else:  # entangled -> keep each combo as its own arrangement
             for entry in entries:
                 single = {
-                    (c.module, c.lesson_type): {c.class_no: c.sessions[0].weeks}
+                    (c.module, c.lesson_type): {c.footprint: c.sessions[0].weeks}
                     for c in entry[3]
                 }
-                arrangements.append(_make_arrangement(entry, single, config, 1))
+                arrangements.append(_make_arrangement(entry, single, config, 1, space))
 
     arrangements.sort(key=lambda a: -a.score)
     return arrangements[:limit] if limit else arrangements

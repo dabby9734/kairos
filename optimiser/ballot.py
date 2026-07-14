@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .model import LESSON_ABBREV, week_label
+from .model import LESSON_ABBREV
 
 BALLOT_TYPE_ORDER = ["Tutorial", "Sectional Teaching", "Recitation", "Laboratory"]
 
@@ -19,22 +19,43 @@ class BallotOption:
 
 
 def ranked_options(result, config) -> dict:
+    # rest-of-timetable sets per (module, lesson_type, footprint), used to PROVE
+    # two same-slot week-twins are genuinely interchangeable (Fix C). Absent for
+    # fake test SearchResults -> such footprints never merge (cluster alone).
+    rests = getattr(result, "rests", None) or {}
     options_by_group: dict = {}
     for (module, lesson_type), fp_members in result.members.items():
         if LESSON_ABBREV.get(lesson_type) not in config.balloted_types:
             continue
-        # Merge footprints that share a slot signature (day/time/online), so
-        # same-slot week-twins are interchangeable in the ballot too.
-        by_slot: dict = {}
+        # Cluster footprints. Two footprints join iff they share a slot signature
+        # (day/time/online) AND have EXACTLY equal rest-of-timetable sets (equal
+        # rest-sets => every timetable using one has a valid twin using the other).
+        clusters: list = []  # {sig, rest, best, choices}
         for fp, choices in fp_members.items():
             best = result.best_by_footprint.get((module, lesson_type, fp))
             if best is None:
                 continue  # never part of any clash-free timetable
             sig = frozenset((s.day, s.start, s.end, s.online) for s in choices[0].sessions)
-            slot = by_slot.setdefault(sig, {"best": best, "choices": []})
-            slot["best"] = max(slot["best"], best)
-            slot["choices"].extend(choices)
-        scored = [(slot["best"], slot["choices"]) for slot in by_slot.values()]
+            rest = rests.get((module, lesson_type, fp))  # may be None
+            placed = False
+            for cl in clusters:
+                if cl["sig"] != sig:
+                    continue
+                # merge only when BOTH sides have a proven-equal rest-set
+                if rest is not None and cl["rest"] is not None and cl["rest"] == rest:
+                    cl["best"] = max(cl["best"], best)
+                    cl["choices"].extend(choices)
+                    placed = True
+                    break
+            if not placed:
+                clusters.append({"sig": sig, "rest": rest, "best": best, "choices": list(choices)})
+
+        # class numbers within a cluster fold in venue-twins (I1 for the ballot);
+        # sort by class_no for deterministic letters / ordering (M4)
+        scored = []
+        for cl in clusters:
+            cl_choices = sorted(cl["choices"], key=lambda c: c.class_no)
+            scored.append((cl["best"], cl_choices))
         scored.sort(key=lambda item: (-item[0], item[1][0].class_no))
 
         options = []
