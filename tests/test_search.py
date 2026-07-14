@@ -83,3 +83,32 @@ def test_find_irreconcilable(config):
     pair = find_irreconcilable(a + b)
     assert pair is not None
     assert {pair[0].module, pair[1].module} == {"A", "B"}
+
+
+from optimiser.search import EnumeratedSpace, enumerate_clashfree, rank
+
+
+def test_search_equals_enumerate_then_rank(groups, config):
+    space = enumerate_clashfree(groups)
+    assert isinstance(space, EnumeratedSpace)
+    combined = search(groups, config)
+    split = rank(space, config)
+    assert [t for t, _, _ in split.top] == [t for t, _, _ in combined.top]
+    assert split.best_by_footprint == combined.best_by_footprint
+    assert split.evaluated == combined.evaluated
+
+
+def test_enumerate_is_config_independent(groups, config):
+    # Enumerated set does not depend on config; only ranking does.
+    space = enumerate_clashfree(groups)
+    assert space.evaluated_count() == len(space.combos)
+    # Re-ranking the same space with a different weight reorders results.
+    import copy
+
+    cfg_a = copy.deepcopy(config)
+    cfg_a.preferences.weights["free_days"] = 0
+    cfg_b = copy.deepcopy(config)
+    cfg_b.preferences.weights["free_days"] = 100
+    top_a = [t for t, _, _ in rank(space, cfg_a).top]
+    top_b = [t for t, _, _ in rank(space, cfg_b).top]
+    assert top_a != top_b  # weighting change changes ordering
