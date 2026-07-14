@@ -96,8 +96,23 @@ async def test_number_key_switches_tab(state, tmp_path):
 async def test_slider_updown_moves_focus(state, tmp_path):
     app = OptimiserApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
-        first = next(s for s in app.query(Slider) if s.key == "weight:free_days")
+        weight_sliders = [s for s in app.query(Slider) if (s.key or "").startswith("weight:")]
+        first, second = weight_sliders[0], weight_sliders[1]
         app.set_focus(first)
         await pilot.press("down")
-        assert app.focused is not first  # focus moved to another control
-        assert isinstance(app.focused, Slider)
+        assert app.focused is second  # down → next slider
+        await pilot.press("up")
+        assert app.focused is first  # up → previous slider
+        # up at the top clamps (stays put, does not leave the group)
+        await pilot.press("up")
+        assert app.focused is first
+
+
+async def test_copy_link_failure_surfaces_url(state, tmp_path, monkeypatch):
+    notes = []
+    monkeypatch.setattr("optimiser.tui.app._os_clipboard_copy", lambda text: False)
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    monkeypatch.setattr(app, "notify", lambda msg, **kw: notes.append(msg))
+    async with app.run_test() as pilot:
+        await pilot.press("c")
+    assert any("nusmods.com/timetable/sem-1/share?" in n for n in notes)

@@ -39,7 +39,7 @@ def render_week_rich(assignment: dict, colours: dict) -> Group:
     rows: list = [header]
 
     for day in WEEKDAYS:
-        blocks = []  # (start_hour, end_hour, module, abbrev, class_no, venue, online, start)
+        blocks = []  # (start_h, end_h, module, abbrev, class_no, venue, online, start, end)
         for (module, lesson_type), choice in sorted(assignment.items()):
             abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
             for session in choice.sessions:
@@ -64,7 +64,11 @@ def render_week_rich(assignment: dict, colours: dict) -> Group:
         cursor = first_hour
         agenda = []
         for start_h, end_h, module, abbrev, class_no, venue, online, start, end in blocks:
-            span_start = max(start_h, first_hour)
+            # Clamp the start to `cursor` too: hours are floor(start)/ceil(end),
+            # so half-hour-boundary back-to-back classes round into overlapping
+            # hour cells. Never drawing before where we've already written keeps
+            # every strip aligned under the hour header (no sideways drift).
+            span_start = max(start_h, first_hour, cursor)
             span_end = min(end_h, last_hour + 1)
             if span_end <= span_start:
                 continue
