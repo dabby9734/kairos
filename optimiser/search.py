@@ -45,7 +45,16 @@ def find_irreconcilable(groups: list):
     return None
 
 
-def search(groups: list, config) -> SearchResult:
+@dataclass(frozen=True)
+class EnumeratedSpace:
+    combos: tuple
+    members: dict
+
+    def evaluated_count(self) -> int:
+        return len(self.combos)
+
+
+def enumerate_clashfree(groups: list) -> EnumeratedSpace:
     deduped = []  # (group, reps, members)
     for group in groups:
         members: dict = {}
@@ -55,26 +64,12 @@ def search(groups: list, config) -> SearchResult:
         deduped.append((group, reps, members))
     deduped.sort(key=lambda item: len(item[1]))
 
-    heap: list = []
-    best_fp: dict = {}
+    combos: list = []
     chosen: list = []
-    state = {"evaluated": 0, "seq": 0}
 
     def recurse(depth: int) -> None:
         if depth == len(deduped):
-            total, breakdown = score_assignment(chosen, config)
-            state["evaluated"] += 1
-            for c in chosen:
-                key = (c.module, c.lesson_type, c.footprint)
-                if total > best_fp.get(key, float("-inf")):
-                    best_fp[key] = total
-            assignment = {(c.module, c.lesson_type): c for c in chosen}
-            state["seq"] += 1
-            item = (total, state["seq"], breakdown, assignment)
-            if len(heap) < config.top_n:
-                heapq.heappush(heap, item)
-            else:
-                heapq.heappushpop(heap, item)
+            combos.append(tuple(chosen))
             return
         for choice in deduped[depth][1]:
             if any(choice.clashes(existing) for existing in chosen):
@@ -85,14 +80,39 @@ def search(groups: list, config) -> SearchResult:
 
     recurse(0)
 
-    top = [
-        (total, breakdown, assignment)
-        for total, _, breakdown, assignment in sorted(heap, key=lambda item: -item[0])
-    ]
     members_out = {
         (group.module, group.lesson_type): {
             fp: sorted(choices, key=lambda c: c.class_no) for fp, choices in members.items()
         }
         for group, _, members in deduped
     }
-    return SearchResult(top, best_fp, members_out, state["evaluated"])
+    return EnumeratedSpace(tuple(combos), members_out)
+
+
+def rank(space: EnumeratedSpace, config) -> SearchResult:
+    heap: list = []
+    best_fp: dict = {}
+    seq = 0
+    for combo in space.combos:
+        total, breakdown = score_assignment(list(combo), config)
+        for c in combo:
+            key = (c.module, c.lesson_type, c.footprint)
+            if total > best_fp.get(key, float("-inf")):
+                best_fp[key] = total
+        assignment = {(c.module, c.lesson_type): c for c in combo}
+        seq += 1
+        item = (total, seq, breakdown, assignment)
+        if len(heap) < config.top_n:
+            heapq.heappush(heap, item)
+        else:
+            heapq.heappushpop(heap, item)
+
+    top = [
+        (total, breakdown, assignment)
+        for total, _, breakdown, assignment in sorted(heap, key=lambda item: -item[0])
+    ]
+    return SearchResult(top, best_fp, space.members, len(space.combos))
+
+
+def search(groups: list, config) -> SearchResult:
+    return rank(enumerate_clashfree(groups), config)

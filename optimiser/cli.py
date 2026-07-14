@@ -11,6 +11,12 @@ import yaml
 from . import api, ballot, output, search
 from .config import DEFAULT_BALLOTED, DEFAULT_PREFERENCES, load_config
 from .model import LESSON_ABBREV
+from .tui.app import run_app
+
+# NOTE: `build_state` is imported lazily inside cmd_tui (not at module level)
+# because optimiser.tui.startup imports guess_acad_year/parse_share_url from
+# this module — a top-level `from .tui.startup import build_state` here would
+# create a circular import (this module isn't finished initializing yet).
 
 
 def parse_share_url(url: str):
@@ -143,6 +149,28 @@ def cmd_run(args) -> None:
     print(output.render_snake(ballot.snake(options, config)))
 
 
+def cmd_tui(args) -> None:
+    from .tui.startup import build_state
+
+    state = build_state(
+        getattr(args, "share_url", None),
+        Path(args.config),
+        Path(args.cache_dir),
+        getattr(args, "acad_year", None),
+    )
+    if state.is_empty():
+        pair = state.irreconcilable()
+        if pair:
+            first, second = pair
+            raise SystemExit(
+                "error: no clash-free timetable — every "
+                f"{first.module} {first.lesson_type} clashes with every "
+                f"{second.module} {second.lesson_type}"
+            )
+        raise SystemExit("error: no clash-free timetable found")
+    run_app(state, Path(args.config))
+
+
 def _add_common_flags(subparser, dest_prefix: str) -> None:
     # NOTE: argparse's SubParsersAction parses the subcommand with a *fresh*
     # namespace and unconditionally copies every attribute back onto the
@@ -174,10 +202,19 @@ def main(argv: list | None = None) -> None:
     run_parser = subparsers.add_parser("run", help="search timetables and print ballot ranking")
     _add_common_flags(run_parser, "run")
 
+    tui_parser = subparsers.add_parser("tui", help="interactive live-tuning app")
+    tui_parser.add_argument(
+        "share_url", nargs="?", help="NUSMods share URL (optional; else uses config.yaml)"
+    )
+    tui_parser.add_argument("--acad-year", help="e.g. 2026-2027 (default: guessed from date)")
+    _add_common_flags(tui_parser, "tui")
+
     args = parser.parse_args(argv)
     args.config = getattr(args, f"{args.command}_config", None) or args.config
     args.cache_dir = getattr(args, f"{args.command}_cache_dir", None) or args.cache_dir
     if args.command == "init":
         cmd_init(args)
-    else:
+    elif args.command == "run":
         cmd_run(args)
+    else:
+        cmd_tui(args)

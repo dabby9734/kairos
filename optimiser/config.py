@@ -63,15 +63,12 @@ def _validate_difficulty(code: str, value) -> None:
             raise SystemExit(f"error: difficulty for {code} must be an int 1-5, got {v!r}")
 
 
-def load_config(path: Path) -> Config:
-    if not path.exists():
-        raise SystemExit(f"error: {path} not found — run 'optimiser init <share-url>' first")
-    data = yaml.safe_load(path.read_text())
+def config_from_dict(data, source: str = "config") -> Config:
     if not isinstance(data, dict):
-        raise SystemExit(f"error: {path} is empty or not a YAML mapping")
+        raise SystemExit(f"error: {source} is empty or not a YAML mapping")
     for key in ("acad_year", "semester"):
         if key not in data:
-            raise SystemExit(f"error: {path} is missing required key '{key}'")
+            raise SystemExit(f"error: {source} is missing required key '{key}'")
 
     prefs_raw = {**DEFAULT_PREFERENCES, **(data.get("preferences") or {})}
     weights = {**DEFAULT_PREFERENCES["weights"], **(prefs_raw.get("weights") or {})}
@@ -91,7 +88,7 @@ def load_config(path: Path) -> Config:
         _validate_difficulty(code, value)
         modules[code] = value
     if not modules:
-        raise SystemExit(f"error: no modules in {path}")
+        raise SystemExit(f"error: no modules in {source}")
 
     priority = list(data.get("priority") or [])
     for code in priority:
@@ -112,3 +109,10 @@ def load_config(path: Path) -> Config:
         alternatives_per_module=int(data.get("alternatives_per_module", 4)),
         top_n=int(data.get("top_n", 5)),
     )
+
+
+def load_config(path: Path) -> Config:
+    if not path.exists():
+        raise SystemExit(f"error: {path} not found — run 'optimiser init <share-url>' first")
+    data = yaml.safe_load(path.read_text())
+    return config_from_dict(data, str(path))
