@@ -56,3 +56,9 @@ class Slider(Widget, can_focus=True):
         elif event.key == "right":
             self.adjust(1)
             event.stop()
+        elif event.key == "up":
+            self.screen.focus_previous()
+            event.stop()
+        elif event.key == "down":
+            self.screen.focus_next()
+            event.stop()

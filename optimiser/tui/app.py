@@ -1,14 +1,45 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import yaml
+from rich.console import Group
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Label, ListItem, ListView, Static, TabbedContent, TabPane
 
-from ..output import render_breakdown, render_snake, render_week, share_url
+from ..output import render_breakdown, render_snake, share_url
+from .render import module_colours, render_week_rich
 from .widgets import Slider
+
+
+def _os_clipboard_copy(text: str) -> bool:
+    """Write text to the OS clipboard via the platform's clipboard command.
+    Returns True on success. Textual's copy_to_clipboard (OSC-52) is unreliable
+    across terminals (e.g. macOS Terminal.app ignores it), so this is the
+    primary path; OSC-52 remains a best-effort fallback for SSH sessions."""
+    if sys.platform == "darwin":
+        candidates = [["pbcopy"]]
+    elif sys.platform.startswith("win"):
+        candidates = [["clip"]]
+    else:
+        candidates = [
+            ["wl-copy"],
+            ["xclip", "-selection", "clipboard"],
+            ["xsel", "--clipboard", "--input"],
+        ]
+    for cmd in candidates:
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.run(cmd, input=text.encode(), check=True)
+                return True
+            except Exception:
+                continue
+    return False
 
 _WEIGHTS = ["free_days", "gaps", "lunch", "same_day_pairing", "time_window", "tough_days"]
 _PREFS = [
@@ -35,6 +66,10 @@ class OptimiserApp(App):
     """
 
     BINDINGS = [
+        ("1", "show_tab('tab-weights')", "Weights"),
+        ("2", "show_tab('tab-diff')", "Difficulty"),
+        ("3", "show_tab('tab-times')", "Times"),
+        ("4", "show_tab('tab-priority')", "Priority"),
         ("s", "save_config", "save config"),
         ("e", "export_ballot", "export ballot"),
         ("c", "copy_link", "copy link"),
@@ -50,6 +85,7 @@ class OptimiserApp(App):
         self.config_path = Path(config_path)
         self.selected = 0
         self.ballot_mode = False
+        self.colours = module_colours(list(state.config.modules))
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -119,11 +155,13 @@ class OptimiserApp(App):
             return
         total, breakdown, assignment = top[self.selected]
         detail.update(
-            render_breakdown(total, breakdown)
-            + "\n\n"
-            + render_week(assignment)
-            + "\n\n"
-            + share_url(assignment, self.state.config.semester)
+            Group(
+                Text(render_breakdown(total, breakdown)),
+                Text(""),
+                render_week_rich(assignment, self.colours),
+                Text(""),
+                Text(share_url(assignment, self.state.config.semester)),
+            )
         )
 
     # --- events ---
@@ -160,13 +198,25 @@ class OptimiserApp(App):
         out.write_text(render_snake(self.state.ballot_snake()))
         self.notify(f"wrote {out}")
 
+    def action_show_tab(self, tab_id: str) -> None:
+        tabs = self.query_one(TabbedContent)
+        tabs.active = tab_id
+        pane = self.query_one(f"#{tab_id}")
+        focusable = next(iter(pane.query("Slider, ListView")), None)
+        if focusable is not None:
+            focusable.focus()
+
     def action_copy_link(self) -> None:
         top = self.state.top_timetables()
         if not top:
             return
         _, _, assignment = top[self.selected]
-        self.copy_to_clipboard(share_url(assignment, self.state.config.semester))
-        self.notify("copied share link")
+        url = share_url(assignment, self.state.config.semester)
+        self.copy_to_clipboard(url)  # OSC-52 best-effort (SSH / capable terminals)
+        if _os_clipboard_copy(url):
+            self.notify("copied share link to clipboard")
+        else:
+            self.notify(f"copy unavailable — link: {url}", timeout=15)
 
     def action_move_priority_up(self) -> None:
         self._move_priority(-1)
