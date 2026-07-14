@@ -26,9 +26,12 @@ def module_colours(modules) -> dict:
 
 
 def render_week_rich(assignment: dict, colours: dict) -> Group:
-    """A Rich renderable of the week grid: each class a coloured strip spanning
+    """A Rich renderable of the week grid. Each class is a coloured strip spanning
     its hours, labelled `MODULE [TYPE]` (or just `MODULE` when the strip is too
-    narrow), with an agenda of times/venues below each day."""
+    narrow), with an agenda of times/venues below each day. Classes whose times
+    overlap (non-clashing alternating-week pairs sharing a slot) are stacked on
+    separate lanes so every class gets a visible bar; the agenda below always
+    lists every class, even one whose strip is undrawable."""
     hours = list(GRID_HOURS)
     first_hour = hours[0]
     last_hour = hours[-1]
@@ -39,60 +42,70 @@ def render_week_rich(assignment: dict, colours: dict) -> Group:
     rows: list = [header]
 
     for day in WEEKDAYS:
-        blocks = []  # (start_h, end_h, module, abbrev, class_no, venue, online, start, end)
+        # block = (start, end, start_h, end_h, module, abbrev, class_no, venue, online)
+        blocks = []
         for (module, lesson_type), choice in sorted(assignment.items()):
             abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
             for session in choice.sessions:
                 if session.day != day:
                     continue
-                blocks.append(
-                    (
-                        session.start // 60,
-                        (session.end + 59) // 60,
-                        module,
-                        abbrev,
-                        choice.class_no,
-                        session.venue,
-                        session.online,
-                        session.start,
-                        session.end,
-                    )
-                )
+                blocks.append((
+                    session.start,
+                    session.end,
+                    session.start // 60,
+                    (session.end + 59) // 60,
+                    module,
+                    abbrev,
+                    choice.class_no,
+                    session.venue,
+                    session.online,
+                ))
         blocks.sort()
 
-        row = Text(f"{day[:3]:5}")
-        cursor = first_hour
-        agenda = []
-        for start_h, end_h, module, abbrev, class_no, venue, online, start, end in blocks:
-            # Agenda is the authoritative list — record every class first, so a
-            # class that can't be drawn as a strip (see below) is never lost.
+        # Lane assignment by real time-interval overlap: a block joins the first
+        # lane whose last-placed session ends at or before this block starts
+        # (blocks are start-sorted, so that means no time overlap). Back-to-back
+        # classes stay in one lane; genuinely overlapping classes open a new one.
+        lanes: list = []
+        lane_end: list = []  # latest end-minute placed in each lane
+        for block in blocks:
+            start, end = block[0], block[1]
+            for i, last_end in enumerate(lane_end):
+                if last_end <= start:
+                    lanes[i].append(block)
+                    lane_end[i] = end
+                    break
+            else:
+                lanes.append([block])
+                lane_end.append(end)
+
+        # Render one strip row per lane; a day with no classes still gets one row.
+        for li, lane in enumerate(lanes or [[]]):
+            row = Text(f"{day[:3]:5}" if li == 0 else "     ")
+            cursor = first_hour
+            for start, end, start_h, end_h, module, abbrev, class_no, venue, online in lane:
+                span_start = max(start_h, first_hour, cursor)
+                span_end = min(end_h, last_hour + 1)
+                if span_end <= span_start:
+                    continue  # undrawable (out of range / cell already used); agenda keeps it
+                if span_start > cursor:
+                    row.append(" " * ((span_start - cursor) * CELL))
+                width = (span_end - span_start) * CELL
+                mark = "~" if online else ""
+                full = f"{mark}{module} [{abbrev}]"
+                label = (full if len(full) <= width else f"{mark}{module}")[:width].ljust(width)
+                bg, fg = colours.get(module, ("white", "black"))
+                style = f"{fg} on {bg}" + (" dim" if online else "")
+                row.append(label, style=style)
+                cursor = span_end
+            rows.append(row)
+
+        # Agenda: every block for the day, sorted by start time.
+        for start, end, _sh, _eh, module, abbrev, class_no, venue, online in sorted(blocks):
             note = " (online)" if online else ""
-            agenda.append(
-                (
-                    start,
-                    f"       {fmt_time(start)}-{fmt_time(end)} {module} "
-                    f"{abbrev}[{class_no}] @{venue}{note}",
-                )
-            )
-            # Clamp the start to `cursor` too: hours are floor(start)/ceil(end),
-            # so half-hour-boundary back-to-back classes round into overlapping
-            # hour cells. Never drawing before where we've already written keeps
-            # every strip aligned under the hour header (no sideways drift).
-            span_start = max(start_h, first_hour, cursor)
-            span_end = min(end_h, last_hour + 1)
-            if span_end <= span_start:
-                continue  # not drawable in the grid (already-consumed/out-of-range hour); agenda still has it
-            if span_start > cursor:
-                row.append(" " * ((span_start - cursor) * CELL))
-            width = (span_end - span_start) * CELL
-            mark = "~" if online else ""
-            full = f"{mark}{module} [{abbrev}]"
-            label = (full if len(full) <= width else f"{mark}{module}")[:width].ljust(width)
-            bg, fg = colours.get(module, ("white", "black"))
-            style = f"{fg} on {bg}" + (" dim" if online else "")
-            row.append(label, style=style)
-            cursor = span_end
-        rows.append(row)
-        rows.extend(Text(text) for _, text in sorted(agenda))
+            rows.append(Text(
+                f"       {fmt_time(start)}-{fmt_time(end)} {module} "
+                f"{abbrev}[{class_no}] @{venue}{note}"
+            ))
 
     return Group(*rows)
