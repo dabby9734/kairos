@@ -49,12 +49,13 @@ def score_assignment(choices, config):
             lecture_days.setdefault(c.module, set()).update(
                 s.day for s in c.sessions if not s.online
             )
-    raw["same_day_pairing"] = sum(
-        1
+    paired_modules = {
+        c.module
         for c in choices
         if c.lesson_type != "Lecture"
         and any(s.day in lecture_days.get(c.module, ()) for s in c.sessions)
-    )
+    }
+    raw["same_day_pairing"] = len(paired_modules)
 
     raw["free_days"] = sum(1 for day in WEEKDAYS if day not in by_day)
 

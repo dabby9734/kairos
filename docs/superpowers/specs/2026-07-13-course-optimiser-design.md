@@ -139,7 +139,7 @@ excluded from all physical-presence components (time window, free days, gaps, lu
 |---|---|
 | `time_window` | penalty per minute of on-campus class before `earliest_start` / after `latest_end` |
 | `tough_days` | per day: `max(0, sum(difficulty of that day's lessons) − max_difficulty_per_day)`, penalised proportionally |
-| `same_day_pairing` | bonus per module whose tutorial-type lesson shares a day with its lecture (only when the lecture is on-campus) |
+| `same_day_pairing` | +1 per module that has at least one non-lecture (tutorial-type) lesson sharing a day with its on-campus lecture; capped at one per module regardless of how many of its lessons qualify |
 | `free_days` | bonus per weekday (Mon–Fri) with no on-campus lessons |
 | `gaps` | penalty per idle minute between consecutive on-campus lessons on a day |
 | `lunch` | penalty per day with on-campus lessons but no free block ≥ `lunch_minutes` inside `lunch_window` |

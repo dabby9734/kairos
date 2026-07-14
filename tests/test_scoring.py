@@ -48,6 +48,15 @@ def test_same_day_pairing_requires_oncampus_lecture(config):
     assert raw([online_lec, tut], config, "same_day_pairing") == 0
 
 
+def test_same_day_pairing_caps_at_one_per_module(config):
+    # BETA has a lecture Monday plus TWO non-lecture classes on Monday.
+    # The bonus is per module, so this scores 1, not 2.
+    lec = choice("BETA", "Lecture", "1", sess("Monday", 600, 720))
+    rec = choice("BETA", "Recitation", "01", sess("Monday", 840, 900))
+    lab = choice("BETA", "Laboratory", "L1", sess("Monday", 960, 1020))
+    assert raw([lec, rec, lab], config, "same_day_pairing") == 1
+
+
 def test_free_days_ignores_online(config):
     # one on-campus Monday class + one online Friday lecture -> Tue/Wed/Thu/Fri free
     cs = [
