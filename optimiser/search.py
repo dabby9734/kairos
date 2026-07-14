@@ -4,7 +4,7 @@ import heapq
 import itertools
 from dataclasses import dataclass
 
-from .model import LESSON_ABBREV, ChoiceGroup
+from .model import LESSON_ABBREV, ChoiceGroup, week_label
 from .scoring import score_assignment
 
 
@@ -112,6 +112,89 @@ def rank(space: EnumeratedSpace, config) -> SearchResult:
         for total, _, breakdown, assignment in sorted(heap, key=lambda item: -item[0])
     ]
     return SearchResult(top, best_fp, space.members, len(space.combos))
+
+
+@dataclass(frozen=True)
+class SlotBid:
+    module: str
+    lesson_type: str
+    options: tuple  # ((class_no, week_label), ...), interchangeable twins at this slot
+
+
+@dataclass
+class Arrangement:
+    score: float
+    breakdown: dict
+    assignment: dict       # representative (best variant) {(module, lesson_type): Choice}
+    bids: list             # list[SlotBid], balloted slots only, sorted by (module, lesson_type)
+    variant_count: int
+
+
+def _arrangement_key(combo) -> frozenset:
+    # Slot layout, ignoring class number AND weeks: two combos share a key iff
+    # they occupy the same (module, type, day, start, end, online) slots.
+    return frozenset(
+        (c.module, c.lesson_type, s.day, s.start, s.end, s.online)
+        for c in combo
+        for s in c.sessions
+    )
+
+
+def _make_arrangement(entry, slot_opts, config, variant_count) -> "Arrangement":
+    total, breakdown, assignment, _combo = entry
+    bids = []
+    for (module, lesson_type), by_no in slot_opts.items():
+        if LESSON_ABBREV.get(lesson_type, lesson_type) not in config.balloted_types:
+            continue
+        options = tuple(
+            (class_no, week_label(weeks)) for class_no, weeks in sorted(by_no.items())
+        )
+        bids.append(SlotBid(module, lesson_type, options))
+    bids.sort(key=lambda b: (b.module, b.lesson_type))
+    return Arrangement(
+        score=total, breakdown=breakdown, assignment=assignment,
+        bids=bids, variant_count=variant_count,
+    )
+
+
+def rank_arrangements(space, config, limit=None) -> list:
+    """Collapse clash-free timetables that share a slot layout (differing only by
+    interchangeable same-slot week-twins) into ranked Arrangements. Twins are
+    offered as free per-slot bids only when the group's clash-free combos form a
+    full Cartesian product; otherwise the combos are kept as separate
+    arrangements (soundness — see design doc)."""
+    scored = []  # (total, breakdown, assignment, combo)
+    for combo in space.combos:
+        total, breakdown = score_assignment(list(combo), config)
+        assignment = {(c.module, c.lesson_type): c for c in combo}
+        scored.append((total, breakdown, assignment, combo))
+
+    groups: dict = {}
+    for entry in scored:
+        groups.setdefault(_arrangement_key(entry[3]), []).append(entry)
+
+    arrangements = []
+    for entries in groups.values():
+        slot_opts: dict = {}  # (module, lesson_type) -> {class_no: weeks}
+        for _t, _b, _a, combo in entries:
+            for c in combo:
+                slot_opts.setdefault((c.module, c.lesson_type), {})[c.class_no] = c.sessions[0].weeks
+        product = 1
+        for by_no in slot_opts.values():
+            product *= len(by_no)
+        if product == len(entries):  # independent -> collapse
+            best = min(entries, key=lambda e: (-e[0], tuple(sorted(c.class_no for c in e[3]))))
+            arrangements.append(_make_arrangement(best, slot_opts, config, len(entries)))
+        else:  # entangled -> keep each combo as its own arrangement
+            for entry in entries:
+                single = {
+                    (c.module, c.lesson_type): {c.class_no: c.sessions[0].weeks}
+                    for c in entry[3]
+                }
+                arrangements.append(_make_arrangement(entry, single, config, 1))
+
+    arrangements.sort(key=lambda a: -a.score)
+    return arrangements[:limit] if limit else arrangements
 
 
 def search(groups: list, config) -> SearchResult:

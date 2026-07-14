@@ -3,9 +3,9 @@ import itertools
 import pytest
 
 from optimiser.api import build_groups, semester_timetable
-from optimiser.model import ChoiceGroup
+from optimiser.model import Choice, ChoiceGroup, Session
 from optimiser.scoring import score_assignment
-from optimiser.search import find_irreconcilable, prepare_groups, search
+from optimiser.search import EnumeratedSpace, find_irreconcilable, prepare_groups, rank_arrangements, search
 
 
 @pytest.fixture
@@ -112,3 +112,55 @@ def test_enumerate_is_config_independent(groups, config):
     top_a = [t for t, _, _ in rank(space, cfg_a).top]
     top_b = [t for t, _, _ in rank(space, cfg_b).top]
     assert top_a != top_b  # weighting change changes ordering
+
+
+ALL_WEEKS = frozenset(range(1, 14))
+
+
+def _space(*combos):
+    return EnumeratedSpace(combos=tuple(combos), members={})
+
+
+def test_rank_arrangements_collapses_week_twins(config):
+    # ALPHA Tutorial twin at Mon 1400-1500: 01 odd weeks, 02 even weeks -> one
+    # arrangement offering both class numbers with week labels.
+    odd = frozenset({1, 3, 5})
+    even = frozenset({2, 4, 6})
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    tut_odd = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 840, 900, odd, "COM1"),))
+    tut_even = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 840, 900, even, "COM1"),))
+    arrs = rank_arrangements(_space((lec, tut_odd), (lec, tut_even)), config)
+    assert len(arrs) == 1
+    a = arrs[0]
+    assert a.variant_count == 2
+    tut_bid = next(b for b in a.bids if b.lesson_type == "Tutorial")
+    assert dict(tut_bid.options) == {"01": "odd wks", "02": "even wks"}
+    # Lecture is not a balloted type -> not in the bids block
+    assert all(b.lesson_type != "Lecture" for b in a.bids)
+
+
+def test_rank_arrangements_keeps_entangled_variants_separate(config):
+    # ALPHA Tutorial and BETA Laboratory BOTH at Mon 1400-1500 with odd/even
+    # splits: only the opposite-week pairings are clash-free, so picking one twin
+    # forces the other -> must NOT collapse into free per-slot bids.
+    odd = frozenset({1, 3, 5})
+    even = frozenset({2, 4, 6})
+    a_odd = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 840, 900, odd, "COM1"),))
+    a_even = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 840, 900, even, "COM1"),))
+    b_odd = Choice("BETA", "Laboratory", "L1", (Session("Monday", 840, 900, odd, "COM2"),))
+    b_even = Choice("BETA", "Laboratory", "L2", (Session("Monday", 840, 900, even, "COM2"),))
+    arrs = rank_arrangements(_space((a_odd, b_even), (a_even, b_odd)), config)
+    assert len(arrs) == 2  # entangled -> not collapsed
+    assert all(a.variant_count == 1 for a in arrs)
+
+
+def test_rank_arrangements_ranks_by_best_and_limits(config):
+    # Two genuinely different arrangements (different tutorial days); the higher
+    # scorer comes first; limit truncates.
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    tut_mon = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 780, 840, ALL_WEEKS, "COM1"),))
+    tut_fri = Choice("ALPHA", "Tutorial", "05", (Session("Friday", 780, 840, ALL_WEEKS, "COM1"),))
+    arrs = rank_arrangements(_space((lec, tut_mon), (lec, tut_fri)), config)
+    assert len(arrs) == 2
+    assert arrs[0].score >= arrs[1].score          # best-first
+    assert len(rank_arrangements(_space((lec, tut_mon), (lec, tut_fri)), config, limit=1)) == 1
