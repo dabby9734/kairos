@@ -23,6 +23,18 @@ Tweak `config.yaml` (preferences, weights, balloted types), then:
 
     .venv/bin/optimiser run
 
+## Interactive app
+
+    .venv/bin/optimiser tui "https://nusmods.com/timetable/sem-1/share?CS1231S=TUT:07A,LEC:2&..."
+    # or, to resume from a saved config:
+    .venv/bin/optimiser tui
+
+A full-screen app: tabs on the left for Weights, Difficulty, Times, and Priority
+(adjust with ←/→); the timetables and their score breakdown on the right, re-ranking
+live as you tune. Press `b` for the ballot view, `s` to save config.yaml, `e` to
+export the ballot to `ballot.txt`, `c` to copy the selected timetable's NUSMods link,
+`q` to quit.
+
 ## How scoring works
 
 Weighted sum of: class time outside your preferred window, per-day difficulty
