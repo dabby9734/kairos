@@ -82,6 +82,25 @@ def test_gap_between_separated_classes_is_preserved():
     assert len(between) >= 8  # at least one empty hour cell of separation
 
 
+def test_subhour_classes_both_listed_in_agenda():
+    # Two clash-free classes packed into one clock hour: one strip may be
+    # undrawable, but neither may vanish from the (authoritative) agenda.
+    assignment = {
+        ("AAA", "Lecture"): _choice("AAA", "Lecture", "1", "Monday", 720, 750),   # 12:00-12:30
+        ("BBB", "Tutorial"): _choice("BBB", "Tutorial", "1", "Monday", 750, 780),  # 12:30-13:00
+    }
+    text = _plain(render_week_rich(assignment, module_colours(["AAA", "BBB"])))
+    assert "1200-1230 AAA LEC[1]" in text
+    assert "1230-1300 BBB TUT[1]" in text  # must not be swallowed
+
+
+def test_out_of_grid_class_listed_in_agenda():
+    # 07:00-08:00 is before the 08:00 grid start: no strip, but still agenda'd.
+    assignment = {("AAA", "Lecture"): _choice("AAA", "Lecture", "1", "Monday", 420, 480)}
+    text = _plain(render_week_rich(assignment, module_colours(["AAA"])))
+    assert "0700-0800 AAA LEC[1]" in text
+
+
 def test_render_applies_module_background_style():
     assignment = {("CS2030S", "Laboratory"): _choice("CS2030S", "Laboratory", "14B", "Monday", 840, 960)}
     console = Console(width=200, force_terminal=True, color_system="standard")

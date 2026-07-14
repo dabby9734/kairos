@@ -64,6 +64,16 @@ def render_week_rich(assignment: dict, colours: dict) -> Group:
         cursor = first_hour
         agenda = []
         for start_h, end_h, module, abbrev, class_no, venue, online, start, end in blocks:
+            # Agenda is the authoritative list — record every class first, so a
+            # class that can't be drawn as a strip (see below) is never lost.
+            note = " (online)" if online else ""
+            agenda.append(
+                (
+                    start,
+                    f"       {fmt_time(start)}-{fmt_time(end)} {module} "
+                    f"{abbrev}[{class_no}] @{venue}{note}",
+                )
+            )
             # Clamp the start to `cursor` too: hours are floor(start)/ceil(end),
             # so half-hour-boundary back-to-back classes round into overlapping
             # hour cells. Never drawing before where we've already written keeps
@@ -71,7 +81,7 @@ def render_week_rich(assignment: dict, colours: dict) -> Group:
             span_start = max(start_h, first_hour, cursor)
             span_end = min(end_h, last_hour + 1)
             if span_end <= span_start:
-                continue
+                continue  # not drawable in the grid (already-consumed/out-of-range hour); agenda still has it
             if span_start > cursor:
                 row.append(" " * ((span_start - cursor) * CELL))
             width = (span_end - span_start) * CELL
@@ -82,14 +92,6 @@ def render_week_rich(assignment: dict, colours: dict) -> Group:
             style = f"{fg} on {bg}" + (" dim" if online else "")
             row.append(label, style=style)
             cursor = span_end
-            note = " (online)" if online else ""
-            agenda.append(
-                (
-                    start,
-                    f"       {fmt_time(start)}-{fmt_time(end)} {module} "
-                    f"{abbrev}[{class_no}] @{venue}{note}",
-                )
-            )
         rows.append(row)
         rows.extend(Text(text) for _, text in sorted(agenda))
 
