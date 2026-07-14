@@ -12,7 +12,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Label, ListItem, ListView, Static, TabbedContent, TabPane
 
-from ..output import render_breakdown, render_snake, share_url
+from ..output import class_warnings, render_breakdown, render_snake, share_url
 from .render import module_colours, render_week_rich
 from .widgets import Slider
 
@@ -154,11 +154,18 @@ class OptimiserApp(App):
             detail.update(render_snake(self.state.ballot_snake()))
             return
         total, breakdown, assignment = top[self.selected]
+        warnings = class_warnings(assignment, self.state.config)
+        if warnings:
+            warning_block = Text("\n".join(warnings), style="dim yellow")
+        else:
+            warning_block = Text("✓ all criteria met", style="dim green")
         detail.update(
             Group(
                 Text(render_breakdown(total, breakdown)),
                 Text(""),
                 render_week_rich(assignment, self.colours),
+                Text(""),
+                warning_block,
                 Text(""),
                 Text(share_url(assignment, self.state.config.semester)),
             )

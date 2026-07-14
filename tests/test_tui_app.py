@@ -1,7 +1,7 @@
 import copy
 
 import pytest
-from textual.widgets import ListView
+from textual.widgets import ListView, Static
 
 from optimiser.api import build_groups, semester_timetable
 from optimiser.tui.app import OptimiserApp
@@ -116,3 +116,35 @@ async def test_copy_link_failure_surfaces_url(state, tmp_path, monkeypatch):
     async with app.run_test() as pilot:
         await pilot.press("c")
     assert any("nusmods.com/timetable/sem-1/share?" in n for n in notes)
+
+
+async def test_warnings_show_in_timetable_mode_only(state, tmp_path, monkeypatch):
+    from rich.console import Console
+    from textual.widgets import Static
+
+    monkeypatch.setattr("optimiser.tui.app.class_warnings", lambda a, c: ["⚠ SENTINEL"])
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        detail = app.query_one("#detail", Static)
+        console = Console()
+        with console.capture() as cap:
+            console.print(detail._Static__content)
+        assert "SENTINEL" in cap.get()  # timetable mode shows warnings
+        await pilot.press("b")  # switch to ballot view
+        with console.capture() as cap:
+            console.print(detail._Static__content)
+        assert "SENTINEL" not in cap.get()  # ballot mode omits them
+
+
+async def test_all_criteria_met_shown_when_no_warnings(state, tmp_path, monkeypatch):
+    from rich.console import Console
+    from textual.widgets import Static
+
+    monkeypatch.setattr("optimiser.tui.app.class_warnings", lambda a, c: [])
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        detail = app.query_one("#detail", Static)
+        console = Console()
+        with console.capture() as cap:
+            console.print(detail._Static__content)
+        assert "all criteria met" in cap.get()
