@@ -67,3 +67,13 @@ def test_footprint_distinguishes_online():
     online = Choice("ALPHA", "Lecture", "1", (sess(venue="E-Learn_C"),))
     physical = Choice("ALPHA", "Lecture", "2", (sess(venue="LT11"),))
     assert online.footprint != physical.footprint
+
+
+def test_week_label():
+    from optimiser.model import week_label
+
+    assert week_label(frozenset(range(1, 14))) == ""          # full run -> no label
+    assert week_label(frozenset({2, 4, 6, 8, 10, 12})) == "even wks"
+    assert week_label(frozenset({1, 3, 5, 7, 9, 11, 13})) == "odd wks"
+    assert week_label(frozenset({1, 2, 5})) == "wks 1,2,5"    # irregular -> compact list
+    assert week_label(frozenset()) == ""                      # empty -> no label
