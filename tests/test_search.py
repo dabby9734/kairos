@@ -224,3 +224,28 @@ def test_rank_arrangements_ranks_by_best_and_limits(config):
     assert len(arrs) == 2
     assert arrs[0].score >= arrs[1].score          # best-first
     assert len(rank_arrangements(_space((lec, tut_mon), (lec, tut_fri)), config, limit=1)) == 1
+
+
+def test_rank_arrangements_materializing_winners_matches_slice(config):
+    # Building only the top `limit` arrangements must not change WHICH arrangements
+    # appear or their -score order versus building all then slicing.
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    combos = tuple(
+        (lec, Choice("ALPHA", "Tutorial", f"{i:02d}", (Session(day, 780, 840, ALL_WEEKS, "COM1"),)))
+        for i, day in enumerate(days, start=1)
+    )
+    space = _space(*combos)
+    everything = rank_arrangements(space, config)
+    assert len(everything) == 6
+
+    def sig(arrs):
+        return [(a.score, [(b.module, b.lesson_type, b.options) for b in a.bids]) for a in arrs]
+
+    capped = rank_arrangements(space, config, limit=3)
+    assert len(capped) == 3
+    scores = [a.score for a in capped]
+    assert scores == sorted(scores, reverse=True)          # -score order preserved
+    assert sig(capped) == sig(everything[:3])              # same arrangements, same order
+    # limit >= population returns everything unchanged
+    assert sig(rank_arrangements(space, config, limit=50)) == sig(everything)

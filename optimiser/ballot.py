@@ -19,36 +19,51 @@ class BallotOption:
 
 
 def ranked_options(result, config) -> dict:
-    # rest-of-timetable sets per (module, lesson_type, footprint), used to PROVE
-    # two same-slot week-twins are genuinely interchangeable (Fix C). Absent for
-    # fake test SearchResults -> such footprints never merge (cluster alone).
-    rests = getattr(result, "rests", None) or {}
+    # Interchangeability via CLASH-SET equality (cheap + sound). Build the set of
+    # viable footprints (those in some clash-free timetable) with a representative
+    # choice each, then two same-slot footprints of a group are interchangeable
+    # iff they clash with the EXACT same set of viable other-group classes:
+    # swapping one for the other in any clash-free timetable introduces no new
+    # clash. This is ~O(viable^2) instead of O(combos * groups) rest-sets.
+    viable: dict = {}  # (module, lesson_type, footprint) -> representative Choice
+    for (module, lesson_type), fp_members in result.members.items():
+        for fp, choices in fp_members.items():
+            if (module, lesson_type, fp) in result.best_by_footprint:
+                viable[(module, lesson_type, fp)] = choices[0]
+
+    clashsets: dict = {}
+    for key, rep in viable.items():
+        group = (key[0], key[1])
+        clashsets[key] = frozenset(
+            other_key
+            for other_key, other_rep in viable.items()
+            if (other_key[0], other_key[1]) != group and other_rep.clashes(rep)
+        )
+
     options_by_group: dict = {}
     for (module, lesson_type), fp_members in result.members.items():
         if LESSON_ABBREV.get(lesson_type) not in config.balloted_types:
             continue
         # Cluster footprints. Two footprints join iff they share a slot signature
-        # (day/time/online) AND have EXACTLY equal rest-of-timetable sets (equal
-        # rest-sets => every timetable using one has a valid twin using the other).
-        clusters: list = []  # {sig, rest, best, choices}
+        # (day/time/online) AND have EQUAL clash-sets (=> every clash-free
+        # timetable using one has a valid twin using the other).
+        clusters: list = []  # {sig, clash, best, choices}
         for fp, choices in fp_members.items():
-            best = result.best_by_footprint.get((module, lesson_type, fp))
-            if best is None:
+            key = (module, lesson_type, fp)
+            if key not in viable:
                 continue  # never part of any clash-free timetable
+            best = result.best_by_footprint[key]
             sig = frozenset((s.day, s.start, s.end, s.online) for s in choices[0].sessions)
-            rest = rests.get((module, lesson_type, fp))  # may be None
+            clash = clashsets[key]
             placed = False
             for cl in clusters:
-                if cl["sig"] != sig:
-                    continue
-                # merge only when BOTH sides have a proven-equal rest-set
-                if rest is not None and cl["rest"] is not None and cl["rest"] == rest:
+                if cl["sig"] == sig and cl["clash"] == clash:
                     cl["best"] = max(cl["best"], best)
                     cl["choices"].extend(choices)
                     placed = True
                     break
             if not placed:
-                clusters.append({"sig": sig, "rest": rest, "best": best, "choices": list(choices)})
+                clusters.append({"sig": sig, "clash": clash, "best": best, "choices": list(choices)})
 
         # class numbers within a cluster fold in venue-twins (I1 for the ballot);
         # sort by class_no for deterministic letters / ordering (M4)

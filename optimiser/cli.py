@@ -107,6 +107,7 @@ def cmd_init(args) -> None:
         "preferences": DEFAULT_PREFERENCES,
         "alternatives_per_module": 4,
         "top_n": 5,
+        "max_arrangements": 50,
     }
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     print(f"wrote {config_path} — tweak preferences there, then: optimiser run")

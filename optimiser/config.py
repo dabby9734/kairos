@@ -48,6 +48,7 @@ class Config:
     preferences: Preferences
     alternatives_per_module: int
     top_n: int
+    max_arrangements: int = 50
 
     def difficulty(self, module: str, lesson_type_full: str) -> int:
         spec = self.modules.get(module, 3)
@@ -108,6 +109,7 @@ def config_from_dict(data, source: str = "config") -> Config:
         preferences=preferences,
         alternatives_per_module=int(data.get("alternatives_per_module", 4)),
         top_n=int(data.get("top_n", 5)),
+        max_arrangements=int(data.get("max_arrangements", 50)),
     )
 
 

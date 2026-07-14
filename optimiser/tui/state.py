@@ -63,11 +63,13 @@ class AppState:
 
     def retune(self):
         # Score every combo once, then share it with both consumers (M5). The
-        # arrangement list is uncapped — show ALL distinct arrangements (Fix A);
-        # top_n only sizes result.top (the raw timetable list).
+        # arrangement list is capped at config.max_arrangements (keeps the TUI
+        # ListView bounded); top_n only sizes result.top (the raw timetable list).
         scored = _score_combos(self.space, self.config)
         self.result = rank(self.space, self.config, scored=scored)
-        self.arrangements = rank_arrangements(self.space, self.config, limit=None, scored=scored)
+        self.arrangements = rank_arrangements(
+            self.space, self.config, limit=self.config.max_arrangements, scored=scored
+        )
         return self.result
 
     def is_empty(self) -> bool:
@@ -133,4 +135,5 @@ class AppState:
             },
             "alternatives_per_module": self.config.alternatives_per_module,
             "top_n": self.config.top_n,
+            "max_arrangements": self.config.max_arrangements,
         }

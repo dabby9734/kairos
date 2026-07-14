@@ -14,7 +14,6 @@ class SearchResult:
     best_by_footprint: dict
     members: dict
     evaluated: int = 0
-    rests: dict = None
 
 
 def prepare_groups(groups: list, config) -> list:
@@ -107,17 +106,12 @@ def rank(space: EnumeratedSpace, config, scored=None) -> SearchResult:
         scored = _score_combos(space, config)
     heap: list = []
     best_fp: dict = {}
-    rests: dict = {}
     seq = 0
     for total, breakdown, assignment, combo in scored:
         for c in combo:
             key = (c.module, c.lesson_type, c.footprint)
             if total > best_fp.get(key, float("-inf")):
                 best_fp[key] = total
-            # rest-of-timetable choices, excluding this choice's GROUP by key
-            gkey = (c.module, c.lesson_type)
-            rest = frozenset(o for o in combo if (o.module, o.lesson_type) != gkey)
-            rests.setdefault(key, set()).add(rest)
         seq += 1
         item = (total, seq, breakdown, assignment)
         if len(heap) < config.top_n:
@@ -125,12 +119,11 @@ def rank(space: EnumeratedSpace, config, scored=None) -> SearchResult:
         else:
             heapq.heappushpop(heap, item)
 
-    rests = {k: frozenset(v) for k, v in rests.items()}
     top = [
         (total, breakdown, assignment)
         for total, _, breakdown, assignment in sorted(heap, key=lambda item: -item[0])
     ]
-    return SearchResult(top, best_fp, space.members, len(space.combos), rests=rests)
+    return SearchResult(top, best_fp, space.members, len(space.combos))
 
 
 @dataclass(frozen=True)
@@ -202,7 +195,12 @@ def rank_arrangements(space, config, limit=None, scored=None) -> list:
     for entry in scored:
         groups.setdefault(_arrangement_key(entry[3]), []).append(entry)
 
-    arrangements = []
+    # First pass: run the collapse-vs-entangled soundness guard per group and
+    # collect cheap (score, ...build args) candidates WITHOUT constructing any
+    # Arrangement objects. Candidate score == the resulting arrangement's score,
+    # so selecting the top `limit` here is equivalent to building all then
+    # slicing by -score — but skips ~all throwaway bid/venue expansion.
+    candidates: list = []  # (score, entry, slot_opts, variant_count)
     for entries in groups.values():
         # keyed by FOOTPRINT (not class_no): the Cartesian soundness guard must
         # count week-variants/footprints, never the venue-expanded class-number set
@@ -215,17 +213,25 @@ def rank_arrangements(space, config, limit=None, scored=None) -> list:
             product *= len(by_fp)
         if product == len(entries):  # independent -> collapse
             best = min(entries, key=lambda e: (-e[0], tuple(sorted(c.class_no for c in e[3]))))
-            arrangements.append(_make_arrangement(best, slot_opts, config, len(entries), space))
+            candidates.append((best[0], best, slot_opts, len(entries)))
         else:  # entangled -> keep each combo as its own arrangement
             for entry in entries:
                 single = {
                     (c.module, c.lesson_type): {c.footprint: c.sessions[0].weeks}
                     for c in entry[3]
                 }
-                arrangements.append(_make_arrangement(entry, single, config, 1, space))
+                candidates.append((entry[0], entry, single, 1))
 
-    arrangements.sort(key=lambda a: -a.score)
-    return arrangements[:limit] if limit else arrangements
+    # Select winners by -score (stable in insertion order for ties, matching a
+    # full sort), then build bids/venue-expansion ONLY for the survivors.
+    if limit:
+        selected = heapq.nlargest(limit, candidates, key=lambda cand: cand[0])
+    else:
+        selected = sorted(candidates, key=lambda cand: -cand[0])
+    return [
+        _make_arrangement(entry, opts, config, variant_count, space)
+        for _score, entry, opts, variant_count in selected
+    ]
 
 
 def search(groups: list, config) -> SearchResult:

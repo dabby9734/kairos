@@ -111,3 +111,24 @@ def test_to_config_yaml_roundtrips(tmp_path, state):
     reloaded = load_config(path)  # must not raise
     assert reloaded.semester == state.config.semester
     assert reloaded.preferences.earliest_start == state.config.preferences.earliest_start
+    assert "max_arrangements" in data
+    assert reloaded.max_arrangements == state.config.max_arrangements
+
+
+def test_retune_caps_arrangements_at_max_arrangements(config):
+    # retune must materialize at most config.max_arrangements distinct arrangements.
+    from optimiser.model import Choice, ChoiceGroup, Session
+
+    cfg = copy.deepcopy(config)
+    cfg.fixed = {}
+    cfg.max_arrangements = 3
+    all_weeks = frozenset(range(1, 14))
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    choices = [
+        Choice("ALPHA", "Tutorial", f"{i:02d}", (Session(day, 540, 600, all_weeks, "COM1"),))
+        for i, day in enumerate(days, start=1)
+    ]
+    groups = [ChoiceGroup("ALPHA", "Tutorial", choices)]
+    state = AppState.from_parts(cfg, groups)
+    # six distinct-day arrangements exist, but the cap keeps only three
+    assert len(state.top_arrangements()) == 3
