@@ -3,7 +3,7 @@ name = "optimiser"
 version = "0.1.0"
 description = "NUS timetable optimiser and ballot ranker"
 requires-python = ">=3.11"
-dependencies = ["requests", "PyYAML"]
+dependencies = ["requests", "PyYAML", "textual"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
