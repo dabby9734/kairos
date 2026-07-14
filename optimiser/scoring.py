@@ -25,6 +25,37 @@ def _merged_intervals(sessions) -> list:
     return merged
 
 
+def tough_day_peaks(choices, config) -> dict:
+    """{day: peak_weekly_difficulty} for days whose week-aware peak exceeds
+    max_difficulty_per_day. The peak is the largest, over all teaching weeks, of
+    the summed difficulty of the sessions active that week — so alternating-week
+    sessions on the same day (e.g. a lab and tutorial that never co-occur) are
+    not double-counted. All sessions count, including online, as tough_days
+    always has. Fast path: the naive all-session daily sum is an upper bound on
+    the peak, so days whose naive sum is already <= cap cannot exceed it and skip
+    the per-week recount."""
+    cap = config.preferences.max_difficulty_per_day
+    naive: dict = {}
+    per_day: dict = {}
+    for c in choices:
+        difficulty = config.difficulty(c.module, c.lesson_type)
+        for s in c.sessions:
+            naive[s.day] = naive.get(s.day, 0) + difficulty
+            per_day.setdefault(s.day, []).append((difficulty, s.weeks))
+    peaks: dict = {}
+    for day, total in naive.items():
+        if total <= cap:
+            continue
+        by_week: dict = {}
+        for difficulty, weeks in per_day[day]:
+            for w in weeks:
+                by_week[w] = by_week.get(w, 0) + difficulty
+        peak = max(by_week.values(), default=0)
+        if peak > cap:
+            peaks[day] = peak
+    return peaks
+
+
 def score_assignment(choices, config):
     prefs = config.preferences
     campus = [s for c in choices for s in c.sessions if not s.online]
@@ -43,13 +74,9 @@ def score_assignment(choices, config):
         / 60
     )
 
-    tough: dict = {}
-    for c in choices:
-        difficulty = config.difficulty(c.module, c.lesson_type)
-        for s in c.sessions:
-            tough[s.day] = tough.get(s.day, 0) + difficulty
     raw["tough_days"] = -sum(
-        max(0, total - prefs.max_difficulty_per_day) for total in tough.values()
+        peak - prefs.max_difficulty_per_day
+        for peak in tough_day_peaks(choices, config).values()
     )
 
     lecture_days: dict = {}

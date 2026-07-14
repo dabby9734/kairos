@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .model import DAYS, LESSON_ABBREV, fmt_time
-from .scoring import COMPONENT_LEGEND, _merged_intervals
+from .scoring import COMPONENT_LEGEND, _merged_intervals, tough_day_peaks
 
 WEEKDAYS = DAYS[:5]
 GRID_HOURS = range(8, 21)
@@ -80,17 +80,15 @@ def class_warnings(assignment: dict, config) -> list[str]:
                     f"ends after your latest {fmt_time(prefs.latest_end)}"))
     warnings.extend(text for _, _, text in sorted(tw))
 
-    # tough_days: per day whose total difficulty (all sessions incl. online) > cap
-    tough: dict = {}
-    for choice in assignment.values():
-        difficulty = config.difficulty(choice.module, choice.lesson_type)
-        for s in choice.sessions:
-            tough[s.day] = tough.get(s.day, 0) + difficulty
-    for day in sorted(tough, key=DAYS.index):
-        if tough[day] > prefs.max_difficulty_per_day:
-            warnings.append(
-                f"⚠ {day} exceeds max difficulty ({tough[day]} > {prefs.max_difficulty_per_day})"
-            )
+    # tough_days: days whose week-aware PEAK difficulty exceeds the cap. Uses the
+    # same tough_day_peaks helper as scoring, so a day is warned iff it is
+    # penalised; the reported number is the peak single-week load, not the naive
+    # all-session sum. All sessions count, including online.
+    peaks = tough_day_peaks(assignment.values(), config)
+    for day in sorted(peaks, key=DAYS.index):
+        warnings.append(
+            f"⚠ {day} exceeds max difficulty ({peaks[day]} > {prefs.max_difficulty_per_day})"
+        )
 
     # same_day_pairing: mirror scoring's per-MODULE bonus (capped 1/module). A
     # module with a campus lecture earns the bonus if ANY of its non-lecture

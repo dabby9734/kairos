@@ -174,3 +174,28 @@ def test_class_warnings_pairing_flags_all_when_module_fully_unpaired(config):
     warnings = class_warnings(a, config)
     assert "⚠ ALPHA TUT not same-day as its lecture" in warnings
     assert "⚠ ALPHA LAB not same-day as its lecture" in warnings
+
+
+def test_class_warnings_tough_day_week_aware_ignores_disjoint_weeks(config):
+    # Naive Monday difficulty 10 > cap 8, but the recitation's weeks are disjoint
+    # from the other two (peak week load 7) -> no tough-day warning (parity).
+    w13 = frozenset({1, 3})
+    w24 = frozenset({2, 4})
+    a = {
+        ("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", Session("Monday", 600, 660, w13, "COM1")),
+        ("BETA", "Laboratory"): _choice("BETA", "Laboratory", "L1", Session("Monday", 720, 780, w13, "COM1")),
+        ("BETA", "Recitation"): _choice("BETA", "Recitation", "R1", Session("Monday", 840, 900, w24, "COM1")),
+    }
+    assert not any("exceeds max difficulty" in w for w in class_warnings(a, config))
+
+
+def test_class_warnings_tough_day_reports_peak_week(config):
+    # Overlapping weeks: week 1 load 4+3+3 = 10 -> the warning names the peak (10),
+    # not the naive all-session sum (also 10 here, but the message must be the peak).
+    w13 = frozenset({1, 3})
+    a = {
+        ("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", Session("Monday", 600, 660, w13, "COM1")),
+        ("BETA", "Laboratory"): _choice("BETA", "Laboratory", "L1", Session("Monday", 720, 780, w13, "COM1")),
+        ("BETA", "Recitation"): _choice("BETA", "Recitation", "R1", Session("Monday", 840, 900, w13, "COM1")),
+    }
+    assert "⚠ Monday exceeds max difficulty (10 > 8)" in class_warnings(a, config)
