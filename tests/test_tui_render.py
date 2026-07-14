@@ -108,3 +108,42 @@ def test_render_applies_module_background_style():
         console.print(render_week_rich(assignment, {"CS2030S": ("green", "black")}))
     # ANSI output should contain a background colour escape (not plain text)
     assert "\x1b[" in cap.get()
+
+
+def test_overlapping_classes_get_separate_lanes():
+    # A 14:00-17:00 lab (odd weeks) and a 15:00-17:00 tutorial (even weeks) share
+    # the 15:00-17:00 cells but never clash -> each gets its own lane/bar.
+    w_odd = frozenset({1, 3, 5})
+    w_even = frozenset({2, 4, 6})
+    assignment = {
+        ("CS2040", "Laboratory"): Choice(
+            "CS2040", "Laboratory", "L1", (Session("Monday", 840, 1020, w_odd, "COM1"),)
+        ),
+        ("MA1521", "Tutorial"): Choice(
+            "MA1521", "Tutorial", "T1", (Session("Monday", 900, 1020, w_even, "COM2"),)
+        ),
+    }
+    text = _plain(render_week_rich(assignment, module_colours(["CS2040", "MA1521"])))
+    lines = text.splitlines()
+    mon = next(i for i, l in enumerate(lines) if l.startswith("Mon"))
+    assert "CS2040 [LAB]" in lines[mon]           # first lane keeps the day gutter
+    assert "MA1521 [TUT]" in lines[mon + 1]       # second class gets its own lane
+    assert lines[mon + 1].startswith("     ")     # extra lane has a blank 5-char gutter
+    assert not lines[mon + 1][:5].strip()         # gutter is blank, not a day name
+    # both classes still listed in the agenda
+    assert "1400-1700 CS2040 LAB[L1]" in text
+    assert "1500-1700 MA1521 TUT[T1]" in text
+
+
+def test_non_overlapping_day_uses_single_lane():
+    # Two sequential classes (10:00-12:00, 13:00-14:00) do NOT overlap -> one lane
+    # row holding both, immediately followed by the agenda (no second lane).
+    assignment = {
+        ("AAA", "Lecture"): _choice("AAA", "Lecture", "1", "Monday", 600, 720),
+        ("BBB", "Tutorial"): _choice("BBB", "Tutorial", "1", "Monday", 780, 840),
+    }
+    text = _plain(render_week_rich(assignment, module_colours(["AAA", "BBB"])))
+    lines = text.splitlines()
+    mon = next(i for i, l in enumerate(lines) if l.startswith("Mon"))
+    assert "AAA" in lines[mon] and "BBB" in lines[mon]   # both share the single lane
+    assert lines[mon + 1].startswith("       ")          # next line is agenda (7 spaces), not a 2nd lane
