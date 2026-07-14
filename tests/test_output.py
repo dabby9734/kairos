@@ -1,6 +1,6 @@
 from optimiser.ballot import BallotOption
 from optimiser.model import Choice, Session
-from optimiser.output import render_breakdown, render_options, render_snake, render_week, share_url
+from optimiser.output import class_warnings, render_breakdown, render_options, render_snake, render_week, share_url
 
 ALL_WEEKS = frozenset(range(1, 14))
 
@@ -35,6 +35,21 @@ def test_render_breakdown():
     assert "gaps" in text and "free_days" in text
 
 
+def test_render_breakdown_includes_legend_descriptions():
+    from optimiser.scoring import COMPONENT_LEGEND
+
+    text = render_breakdown(3.5, {"gaps": (-2.0, -2.0), "free_days": (2, 8.0)})
+    assert COMPONENT_LEGEND["gaps"] in text
+    assert COMPONENT_LEGEND["free_days"] in text
+
+
+def test_render_breakdown_unknown_component_has_no_description():
+    # A component with no legend entry must still render (no trailing dash).
+    text = render_breakdown(1.0, {"mystery": (1.0, 1.0)})
+    assert "mystery" in text
+    assert "—" not in text
+
+
 def test_render_handles_unmapped_lesson_type():
     unmapped = "Tutorial Type 3"
     choice = Choice(
@@ -64,3 +79,98 @@ def test_render_options_and_snake():
     assert "choice A" in snake_text
     assert "Mon 1400-1500" in snake_text
     assert "interchangeable with 02" in snake_text
+
+
+def _choice(module, ltype, class_no, *sessions):
+    return Choice(module, ltype, class_no, tuple(sessions))
+
+
+def _sess(day, start, end, venue="COM1"):
+    return Session(day, start, end, ALL_WEEKS, venue)
+
+
+def test_class_warnings_time_window_before_earliest(config):
+    # ALPHA TUT 09:00-11:00, earliest 10:00 -> starts too early.
+    a = {("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", _sess("Monday", 540, 660))}
+    warnings = class_warnings(a, config)
+    assert warnings == ["⚠ ALPHA TUT Mon 0900 starts before your earliest 1000"]
+
+
+def test_class_warnings_time_window_after_latest(config):
+    # ALPHA TUT 17:00-19:00, latest 18:00 -> ends too late.
+    a = {("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", _sess("Monday", 1020, 1140))}
+    assert class_warnings(a, config) == ["⚠ ALPHA TUT Mon 1900 ends after your latest 1800"]
+
+
+def test_class_warnings_time_window_ignores_online(config):
+    # Online 08:00-10:00 lecture is excluded from the time window, like scoring.
+    a = {("ALPHA", "Lecture"): _choice("ALPHA", "Lecture", "1", _sess("Monday", 480, 600, "E-Learn_C"))}
+    assert class_warnings(a, config) == []
+
+
+def test_class_warnings_tough_day_counts_online(config):
+    # ALPHA LEC(online) 2 + ALPHA TUT 4 + BETA LAB 3 = 9 > 8, all Monday.
+    a = {
+        ("ALPHA", "Lecture"): _choice("ALPHA", "Lecture", "1", _sess("Monday", 600, 720, "E-Learn_C")),
+        ("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", _sess("Monday", 780, 840)),
+        ("BETA", "Laboratory"): _choice("BETA", "Laboratory", "L1", _sess("Monday", 960, 1080)),
+    }
+    assert "⚠ Monday exceeds max difficulty (9 > 8)" in class_warnings(a, config)
+
+
+def test_class_warnings_same_day_pairing_unpaired(config):
+    # ALPHA lecture Monday (campus), tutorial Tuesday -> not paired.
+    a = {
+        ("ALPHA", "Lecture"): _choice("ALPHA", "Lecture", "1", _sess("Monday", 600, 720)),
+        ("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", _sess("Tuesday", 600, 660)),
+    }
+    assert "⚠ ALPHA TUT not same-day as its lecture" in class_warnings(a, config)
+
+
+def test_class_warnings_no_pairing_when_no_campus_lecture(config):
+    # Lecture is online-only -> pairing is impossible, so it is NOT a violation.
+    a = {
+        ("ALPHA", "Lecture"): _choice("ALPHA", "Lecture", "1", _sess("Monday", 600, 720, "E-Learn_C")),
+        ("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", _sess("Tuesday", 600, 660)),
+    }
+    assert not any("same-day" in w for w in class_warnings(a, config))
+
+
+def test_class_warnings_no_lunch(config):
+    # One class spans the whole 11:00-14:00 window -> no lunch block.
+    a = {("ALPHA", "Lecture"): _choice("ALPHA", "Lecture", "1", _sess("Monday", 600, 900))}
+    assert "⚠ Monday has no lunch break" in class_warnings(a, config)
+
+
+def test_class_warnings_clean_timetable_is_empty(config):
+    # Lecture 10:00-12:00 + tutorial 13:00-14:00, same day: in window, paired,
+    # under the difficulty cap, and leaves a 60-min lunch block.
+    a = {
+        ("ALPHA", "Lecture"): _choice("ALPHA", "Lecture", "1", _sess("Monday", 600, 720)),
+        ("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", _sess("Monday", 780, 840)),
+    }
+    assert class_warnings(a, config) == []
+
+
+def test_class_warnings_pairing_suppressed_when_module_already_paired(config):
+    # ALPHA lecture Mon; tutorial Mon (paired) earns the module's bonus, so the
+    # unpaired Tue lab must NOT be flagged — moving it would not change the score.
+    a = {
+        ("ALPHA", "Lecture"): _choice("ALPHA", "Lecture", "1", _sess("Monday", 600, 720)),
+        ("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", _sess("Monday", 780, 840)),
+        ("ALPHA", "Laboratory"): _choice("ALPHA", "Laboratory", "L1", _sess("Tuesday", 600, 660)),
+    }
+    assert not any("same-day" in w for w in class_warnings(a, config))
+
+
+def test_class_warnings_pairing_flags_all_when_module_fully_unpaired(config):
+    # ALPHA lecture Mon; tutorial AND lab both on Tue -> module earns no pairing
+    # bonus, so both are flagged (moving either to Mon would raise the score).
+    a = {
+        ("ALPHA", "Lecture"): _choice("ALPHA", "Lecture", "1", _sess("Monday", 600, 720)),
+        ("ALPHA", "Tutorial"): _choice("ALPHA", "Tutorial", "01", _sess("Tuesday", 600, 660)),
+        ("ALPHA", "Laboratory"): _choice("ALPHA", "Laboratory", "L1", _sess("Tuesday", 720, 780)),
+    }
+    warnings = class_warnings(a, config)
+    assert "⚠ ALPHA TUT not same-day as its lecture" in warnings
+    assert "⚠ ALPHA LAB not same-day as its lecture" in warnings

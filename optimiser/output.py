@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .model import DAYS, LESSON_ABBREV, fmt_time
+from .scoring import COMPONENT_LEGEND, _merged_intervals
 
 WEEKDAYS = DAYS[:5]
 GRID_HOURS = range(8, 21)
@@ -48,8 +49,102 @@ def render_week(assignment: dict) -> str:
 def render_breakdown(total: float, breakdown: dict) -> str:
     lines = [f"score: {total:+.2f}"]
     for name, (raw, weighted) in sorted(breakdown.items()):
-        lines.append(f"    {name:18} raw {raw:+8.2f}   weighted {weighted:+8.2f}")
+        desc = COMPONENT_LEGEND.get(name)
+        suffix = f"   — {desc}" if desc else ""
+        lines.append(f"    {name:18} raw {raw:+8.2f}   weighted {weighted:+8.2f}{suffix}")
     return "\n".join(lines)
+
+
+def class_warnings(assignment: dict, config) -> list[str]:
+    """Human-readable warnings for classes/days that fail the user's criteria in
+    this timetable. Each check mirrors scoring.score_assignment so warnings and
+    score never disagree. free_days (a bonus) and gaps (an aggregate) produce no
+    per-class warning. Returns [] when nothing is violated."""
+    prefs = config.preferences
+    warnings: list[str] = []
+
+    # time_window: campus sessions starting early / ending late (online excluded)
+    tw = []
+    for (module, lesson_type), choice in assignment.items():
+        abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
+        for s in choice.sessions:
+            if s.online:
+                continue
+            if s.start < prefs.earliest_start:
+                tw.append((DAYS.index(s.day), s.start,
+                    f"⚠ {module} {abbrev} {s.day[:3]} {fmt_time(s.start)} "
+                    f"starts before your earliest {fmt_time(prefs.earliest_start)}"))
+            if s.end > prefs.latest_end:
+                tw.append((DAYS.index(s.day), s.start,
+                    f"⚠ {module} {abbrev} {s.day[:3]} {fmt_time(s.end)} "
+                    f"ends after your latest {fmt_time(prefs.latest_end)}"))
+    warnings.extend(text for _, _, text in sorted(tw))
+
+    # tough_days: per day whose total difficulty (all sessions incl. online) > cap
+    tough: dict = {}
+    for choice in assignment.values():
+        difficulty = config.difficulty(choice.module, choice.lesson_type)
+        for s in choice.sessions:
+            tough[s.day] = tough.get(s.day, 0) + difficulty
+    for day in sorted(tough, key=DAYS.index):
+        if tough[day] > prefs.max_difficulty_per_day:
+            warnings.append(
+                f"⚠ {day} exceeds max difficulty ({tough[day]} > {prefs.max_difficulty_per_day})"
+            )
+
+    # same_day_pairing: mirror scoring's per-MODULE bonus (capped 1/module). A
+    # module with a campus lecture earns the bonus if ANY of its non-lecture
+    # classes shares a lecture day, so warn only for modules that earn ZERO
+    # pairing — where moving any non-lecture class to a lecture day would
+    # actually raise the score. Modules with no campus lecture can't pair
+    # (not a violation).
+    lecture_days: dict = {}
+    for choice in assignment.values():
+        if choice.lesson_type == "Lecture":
+            lecture_days.setdefault(choice.module, set()).update(
+                s.day for s in choice.sessions if not s.online
+            )
+    nonlecture_by_module: dict = {}
+    for (module, lesson_type), choice in assignment.items():
+        if lesson_type == "Lecture":
+            continue
+        nonlecture_by_module.setdefault(module, []).append((lesson_type, choice))
+    unpaired = []
+    for module, classes in nonlecture_by_module.items():
+        days = lecture_days.get(module)
+        if not days:
+            continue
+        if any(s.day in days for _, choice in classes for s in choice.sessions):
+            continue  # module already earns its pairing bonus; score is maxed
+        for lesson_type, _ in classes:
+            abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
+            unpaired.append((module, abbrev))
+    for module, abbrev in sorted(unpaired):
+        warnings.append(f"⚠ {module} {abbrev} not same-day as its lecture")
+
+    # lunch: per day with no free block >= lunch_minutes in the lunch window
+    # (campus sessions only; identical arithmetic to scoring's lunchless count)
+    by_day: dict = {}
+    for choice in assignment.values():
+        for s in choice.sessions:
+            if not s.online:
+                by_day.setdefault(s.day, []).append(s)
+    for day in sorted(by_day, key=DAYS.index):
+        merged = _merged_intervals(by_day[day])
+        free_blocks = []
+        cursor = prefs.lunch_start
+        for start, end in merged:
+            if end <= prefs.lunch_start or start >= prefs.lunch_end:
+                continue
+            if start > cursor:
+                free_blocks.append(start - cursor)
+            cursor = max(cursor, end)
+        if prefs.lunch_end > cursor:
+            free_blocks.append(prefs.lunch_end - cursor)
+        if max(free_blocks, default=0) < prefs.lunch_minutes:
+            warnings.append(f"⚠ {day} has no lunch break")
+
+    return warnings
 
 
 def _when(sessions) -> str:
