@@ -37,8 +37,10 @@ def test_set_weight_reranks(state):
 
 
 def test_set_difficulty_changes_scoring(state):
+    # Lower the daily cap to 0 so every difficulty point is penalised by
+    # tough_days — then any difficulty change must move the scores.
+    state.set_pref("max_difficulty_per_day", 0)
     before = [t for t, _, _ in state.top_timetables()]
-    # crank a component difficulty to force tough_days penalties
     state.set_difficulty("BETA", "LAB", 5)
     assert state.config.modules["BETA"]["LAB"] == 5
     after = [t for t, _, _ in state.top_timetables()]
