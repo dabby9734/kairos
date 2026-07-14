@@ -136,6 +136,19 @@ async def test_warnings_show_in_timetable_mode_only(state, tmp_path, monkeypatch
         assert "SENTINEL" not in cap.get()  # ballot mode omits them
 
 
+async def test_detail_shows_bids_block(state, tmp_path):
+    from rich.console import Console
+    from textual.widgets import Static
+
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        detail = app.query_one("#detail", Static)
+        console = Console()
+        with console.capture() as cap:
+            console.print(detail._Static__content)  # textual 8.2.8: read raw stored content
+        assert "Bids" in cap.get()  # the interchangeable-bids block is present
+
+
 async def test_all_criteria_met_shown_when_no_warnings(state, tmp_path, monkeypatch):
     from rich.console import Console
 

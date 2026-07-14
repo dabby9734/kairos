@@ -68,6 +68,14 @@ def test_ballot_helpers(state):
     assert isinstance(snake, list)
 
 
+def test_top_arrangements_returns_arrangements(state):
+    from optimiser.search import Arrangement
+
+    arrs = state.top_arrangements()
+    assert arrs and all(isinstance(a, Arrangement) for a in arrs)
+    assert all(hasattr(a, "bids") and hasattr(a, "variant_count") for a in arrs)
+
+
 def test_to_config_yaml_roundtrips(tmp_path, state):
     import yaml
 

@@ -10,6 +10,7 @@ from ..search import (
     find_irreconcilable,
     prepare_groups,
     rank,
+    rank_arrangements,
 )
 
 _PREF_FIELDS = {
@@ -48,6 +49,7 @@ class AppState:
     groups: list
     space: EnumeratedSpace
     result: object = None
+    arrangements: list = None
 
     @classmethod
     def from_parts(cls, config, groups) -> "AppState":
@@ -60,6 +62,9 @@ class AppState:
 
     def retune(self):
         self.result = rank(self.space, self.config)
+        self.arrangements = rank_arrangements(
+            self.space, self.config, limit=self.config.top_n or None
+        )
         return self.result
 
     def is_empty(self) -> bool:
@@ -93,6 +98,9 @@ class AppState:
 
     def top_timetables(self) -> list:
         return self.result.top
+
+    def top_arrangements(self) -> list:
+        return self.arrangements
 
     def ballot_options(self) -> dict:
         return ballot.ranked_options(self.result, self.config)

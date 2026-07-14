@@ -12,6 +12,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Label, ListItem, ListView, Static, TabbedContent, TabPane
 
+from ..model import LESSON_ABBREV
 from ..output import class_warnings, render_breakdown, render_snake, share_url
 from .render import module_colours, render_week_rich
 from .widgets import Slider
@@ -55,6 +56,22 @@ _CLOCK_PREFS = {"earliest_start", "latest_end", "lunch_start", "lunch_end"}
 
 def _fmt_clock(minutes: int) -> str:
     return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+def _render_bids(arrangement) -> Text:
+    """A 'Bids' block listing each balloted slot's interchangeable class numbers
+    (with week labels) for the selected arrangement."""
+    if not arrangement.bids:
+        return Text("")
+    lines = ["Bids (interchangeable per slot):"]
+    for bid in arrangement.bids:
+        abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
+        opts = " / ".join(
+            f"{class_no} ({label})" if label else class_no
+            for class_no, label in bid.options
+        )
+        lines.append(f"  {bid.module} {abbrev}  →  {opts}")
+    return Text("\n".join(lines), style="dim")
 
 
 class OptimiserApp(App):
@@ -135,9 +152,10 @@ class OptimiserApp(App):
     def _refresh_results(self) -> None:
         tt_list = self.query_one("#tt-list", ListView)
         tt_list.clear()
-        top = self.state.top_timetables()
-        for i, (total, _, _) in enumerate(top):
-            tt_list.append(ListItem(Label(f"#{i + 1}  {total:+.1f}")))
+        top = self.state.top_arrangements()
+        for i, arr in enumerate(top):
+            variants = f"  ({arr.variant_count} variants)" if arr.variant_count > 1 else ""
+            tt_list.append(ListItem(Label(f"#{i + 1}  {arr.score:+.1f}{variants}")))
         if self.selected >= len(top):
             self.selected = 0
         if top:
@@ -146,28 +164,30 @@ class OptimiserApp(App):
 
     def _refresh_detail(self) -> None:
         detail = self.query_one("#detail", Static)
-        top = self.state.top_timetables()
+        top = self.state.top_arrangements()
         if not top:
             detail.update("no clash-free timetables")
             return
         if self.ballot_mode:
             detail.update(render_snake(self.state.ballot_snake()))
             return
-        total, breakdown, assignment = top[self.selected]
-        warnings = class_warnings(assignment, self.state.config)
+        arr = top[self.selected]
+        warnings = class_warnings(arr.assignment, self.state.config)
         if warnings:
             warning_block = Text("\n".join(warnings), style="dim yellow")
         else:
             warning_block = Text("✓ all criteria met", style="dim green")
         detail.update(
             Group(
-                Text(render_breakdown(total, breakdown)),
+                Text(render_breakdown(arr.score, arr.breakdown)),
                 Text(""),
-                render_week_rich(assignment, self.colours),
+                render_week_rich(arr.assignment, self.colours),
                 Text(""),
                 warning_block,
                 Text(""),
-                Text(share_url(assignment, self.state.config.semester)),
+                _render_bids(arr),
+                Text(""),
+                Text(share_url(arr.assignment, self.state.config.semester)),
             )
         )
 
@@ -214,11 +234,10 @@ class OptimiserApp(App):
             focusable.focus()
 
     def action_copy_link(self) -> None:
-        top = self.state.top_timetables()
+        top = self.state.top_arrangements()
         if not top:
             return
-        _, _, assignment = top[self.selected]
-        url = share_url(assignment, self.state.config.semester)
+        url = share_url(top[self.selected].assignment, self.state.config.semester)
         self.copy_to_clipboard(url)  # OSC-52 best-effort (SSH / capable terminals)
         if _os_clipboard_copy(url):
             self.notify("copied share link to clipboard")
