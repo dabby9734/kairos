@@ -120,7 +120,6 @@ async def test_copy_link_failure_surfaces_url(state, tmp_path, monkeypatch):
 
 async def test_warnings_show_in_timetable_mode_only(state, tmp_path, monkeypatch):
     from rich.console import Console
-    from textual.widgets import Static
 
     monkeypatch.setattr("optimiser.tui.app.class_warnings", lambda a, c: ["⚠ SENTINEL"])
     app = OptimiserApp(state, tmp_path / "config.yaml")
@@ -128,6 +127,7 @@ async def test_warnings_show_in_timetable_mode_only(state, tmp_path, monkeypatch
         detail = app.query_one("#detail", Static)
         console = Console()
         with console.capture() as cap:
+            # textual 8.2.8's Static has no public renderable; read the raw content it stored
             console.print(detail._Static__content)
         assert "SENTINEL" in cap.get()  # timetable mode shows warnings
         await pilot.press("b")  # switch to ballot view
@@ -138,7 +138,6 @@ async def test_warnings_show_in_timetable_mode_only(state, tmp_path, monkeypatch
 
 async def test_all_criteria_met_shown_when_no_warnings(state, tmp_path, monkeypatch):
     from rich.console import Console
-    from textual.widgets import Static
 
     monkeypatch.setattr("optimiser.tui.app.class_warnings", lambda a, c: [])
     app = OptimiserApp(state, tmp_path / "config.yaml")
@@ -146,5 +145,6 @@ async def test_all_criteria_met_shown_when_no_warnings(state, tmp_path, monkeypa
         detail = app.query_one("#detail", Static)
         console = Console()
         with console.capture() as cap:
+            # textual 8.2.8's Static has no public renderable; read the raw content it stored
             console.print(detail._Static__content)
         assert "all criteria met" in cap.get()
