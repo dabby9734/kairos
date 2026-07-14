@@ -8,8 +8,8 @@ from urllib.parse import parse_qs, urlparse
 
 import yaml
 
-from . import api
-from .config import DEFAULT_BALLOTED, DEFAULT_PREFERENCES
+from . import api, ballot, output, search
+from .config import DEFAULT_BALLOTED, DEFAULT_PREFERENCES, load_config
 from .model import LESSON_ABBREV
 
 
@@ -107,7 +107,40 @@ def cmd_init(args) -> None:
 
 
 def cmd_run(args) -> None:
-    raise SystemExit("run: not implemented yet")
+    config = load_config(Path(args.config))
+    cache_dir = Path(args.cache_dir)
+
+    groups = []
+    for code in config.modules:
+        data = api.fetch_module(config.acad_year, code, cache_dir)
+        groups.extend(api.build_groups(code, api.semester_timetable(data, config.semester)))
+    groups = search.prepare_groups(groups, config)
+
+    result = search.search(groups, config)
+    if not result.top:
+        pair = search.find_irreconcilable(groups)
+        if pair:
+            first, second = pair
+            raise SystemExit(
+                "error: no clash-free timetable — every "
+                f"{first.module} {first.lesson_type} clashes with every "
+                f"{second.module} {second.lesson_type}"
+            )
+        raise SystemExit("error: no clash-free timetable found")
+
+    print(f"evaluated {result.evaluated} clash-free timetables\n")
+    for rank, (total, breakdown, assignment) in enumerate(result.top, 1):
+        print(f"=== timetable #{rank} ===")
+        print(output.render_breakdown(total, breakdown))
+        print(output.render_week(assignment))
+        print(output.share_url(assignment, config.semester))
+        print()
+
+    options = ballot.ranked_options(result, config)
+    print("=== backup choices per balloted group ===")
+    print(output.render_options(options))
+    print("\n=== ballot ranking (snake order, cap 20) ===")
+    print(output.render_snake(ballot.snake(options, config)))
 
 
 def main(argv: list | None = None) -> None:
