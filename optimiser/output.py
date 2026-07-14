@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .model import DAYS, LESSON_ABBREV, fmt_time
+from .scoring import COMPONENT_LEGEND
 
 WEEKDAYS = DAYS[:5]
 GRID_HOURS = range(8, 21)
@@ -48,7 +49,9 @@ def render_week(assignment: dict) -> str:
 def render_breakdown(total: float, breakdown: dict) -> str:
     lines = [f"score: {total:+.2f}"]
     for name, (raw, weighted) in sorted(breakdown.items()):
-        lines.append(f"    {name:18} raw {raw:+8.2f}   weighted {weighted:+8.2f}")
+        desc = COMPONENT_LEGEND.get(name)
+        suffix = f"   — {desc}" if desc else ""
+        lines.append(f"    {name:18} raw {raw:+8.2f}   weighted {weighted:+8.2f}{suffix}")
     return "\n".join(lines)
 
 

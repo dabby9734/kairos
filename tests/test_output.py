@@ -35,6 +35,21 @@ def test_render_breakdown():
     assert "gaps" in text and "free_days" in text
 
 
+def test_render_breakdown_includes_legend_descriptions():
+    from optimiser.scoring import COMPONENT_LEGEND
+
+    text = render_breakdown(3.5, {"gaps": (-2.0, -2.0), "free_days": (2, 8.0)})
+    assert COMPONENT_LEGEND["gaps"] in text
+    assert COMPONENT_LEGEND["free_days"] in text
+
+
+def test_render_breakdown_unknown_component_has_no_description():
+    # A component with no legend entry must still render (no trailing dash).
+    text = render_breakdown(1.0, {"mystery": (1.0, 1.0)})
+    assert "mystery" in text
+    assert "—" not in text
+
+
 def test_render_handles_unmapped_lesson_type():
     unmapped = "Tutorial Type 3"
     choice = Choice(

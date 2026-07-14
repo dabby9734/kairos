@@ -4,6 +4,15 @@ from .model import DAYS
 
 WEEKDAYS = DAYS[:5]
 
+COMPONENT_LEGEND = {
+    "free_days": "whole free weekdays (more = better)",
+    "gaps": "idle hours between classes (fewer = better)",
+    "lunch": "days with no lunch break (fewer = better)",
+    "same_day_pairing": "tutorials/labs sharing a day with their lecture (more = better)",
+    "time_window": "class-hours outside your preferred window (fewer = better)",
+    "tough_days": "difficulty piled past your daily cap (less = better)",
+}
+
 
 def _merged_intervals(sessions) -> list:
     intervals = sorted((s.start, s.end) for s in sessions)
