@@ -128,7 +128,7 @@ def cmd_run(args) -> None:
             )
         raise SystemExit("error: no clash-free timetable found")
 
-    print(f"evaluated {result.evaluated} clash-free timetables\n")
+    print(f"evaluated {result.evaluated} clash-free timetable shapes\n")
     for rank, (total, breakdown, assignment) in enumerate(result.top, 1):
         print(f"=== timetable #{rank} ===")
         print(output.render_breakdown(total, breakdown))
@@ -143,6 +143,23 @@ def cmd_run(args) -> None:
     print(output.render_snake(ballot.snake(options, config)))
 
 
+def _add_common_flags(subparser, dest_prefix: str) -> None:
+    # NOTE: argparse's SubParsersAction parses the subcommand with a *fresh*
+    # namespace and unconditionally copies every attribute back onto the
+    # parent namespace — so a subparser argument sharing a dest with a
+    # parent-parser argument would silently clobber a value set *before*
+    # the subcommand (e.g. `optimiser --config X run` would lose "X" to
+    # the subparser's own default). Using distinct dests here and
+    # resolving "subcommand value wins if given, else the global one" in
+    # main() sidesteps that.
+    subparser.add_argument(
+        "--config", dest=f"{dest_prefix}_config", default=None, help="path to config.yaml"
+    )
+    subparser.add_argument(
+        "--cache-dir", dest=f"{dest_prefix}_cache_dir", default=None, help="API cache directory"
+    )
+
+
 def main(argv: list | None = None) -> None:
     parser = argparse.ArgumentParser(prog="optimiser", description="NUS timetable optimiser")
     parser.add_argument("--config", default="config.yaml", help="path to config.yaml")
@@ -152,10 +169,14 @@ def main(argv: list | None = None) -> None:
     init_parser = subparsers.add_parser("init", help="generate config.yaml from a share URL")
     init_parser.add_argument("share_url", help="NUSMods share URL with your current picks")
     init_parser.add_argument("--acad-year", help="e.g. 2026-2027 (default: guessed from date)")
+    _add_common_flags(init_parser, "init")
 
-    subparsers.add_parser("run", help="search timetables and print ballot ranking")
+    run_parser = subparsers.add_parser("run", help="search timetables and print ballot ranking")
+    _add_common_flags(run_parser, "run")
 
     args = parser.parse_args(argv)
+    args.config = getattr(args, f"{args.command}_config", None) or args.config
+    args.cache_dir = getattr(args, f"{args.command}_cache_dir", None) or args.cache_dir
     if args.command == "init":
         cmd_init(args)
     else:

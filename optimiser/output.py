@@ -11,7 +11,7 @@ def share_url(assignment: dict, semester: int) -> str:
     by_module: dict = {}
     for (module, lesson_type), choice in assignment.items():
         by_module.setdefault(module, []).append(
-            f"{LESSON_ABBREV[lesson_type]}:{choice.class_no}"
+            f"{LESSON_ABBREV.get(lesson_type, lesson_type)}:{choice.class_no}"
         )
     parts = [f"{module}={','.join(sorted(entries))}" for module, entries in sorted(by_module.items())]
     return f"https://nusmods.com/timetable/sem-{semester}/share?" + "&".join(parts)
@@ -36,7 +36,7 @@ def render_week(assignment: dict) -> str:
                     (
                         session.start,
                         f"       {fmt_time(session.start)}-{fmt_time(session.end)} "
-                        f"{module} {LESSON_ABBREV[lesson_type]}[{choice.class_no}] "
+                        f"{module} {LESSON_ABBREV.get(lesson_type, lesson_type)}[{choice.class_no}] "
                         f"@{session.venue}{online_note}",
                     )
                 )
@@ -61,7 +61,7 @@ def _when(sessions) -> str:
 def render_options(options_by_group: dict) -> str:
     lines = []
     for (module, lesson_type), options in options_by_group.items():
-        lines.append(f"{module} {LESSON_ABBREV[lesson_type]}:")
+        lines.append(f"{module} {LESSON_ABBREV.get(lesson_type, lesson_type)}:")
         for option in options:
             tie = (
                 f"  (interchangeable with {', '.join(option.tied_with)})"
@@ -84,7 +84,7 @@ def render_snake(entries: list) -> str:
             else ""
         )
         lines.append(
-            f"{position:2}. {option.module} {LESSON_ABBREV[option.lesson_type]}"
+            f"{position:2}. {option.module} {LESSON_ABBREV.get(option.lesson_type, option.lesson_type)}"
             f"[{option.class_no}]  choice {option.letter}  {_when(option.sessions)}{tie}"
         )
     return "\n".join(lines)

@@ -35,6 +35,23 @@ def test_render_breakdown():
     assert "gaps" in text and "free_days" in text
 
 
+def test_render_handles_unmapped_lesson_type():
+    unmapped = "Tutorial Type 3"
+    choice = Choice(
+        "ALPHA", unmapped, "09", (Session("Monday", 840, 900, ALL_WEEKS, "COM1-0201"),)
+    )
+    assignment = {("ALPHA", unmapped): choice}
+
+    assert unmapped in share_url(assignment, 1)
+    assert unmapped in render_week(assignment)
+
+    entry = BallotOption(
+        "ALPHA", unmapped, "09", "A", 10.0,
+        (Session("Monday", 840, 900, ALL_WEEKS, "COM1-0201"),), [],
+    )
+    assert unmapped in render_snake([entry])
+
+
 def test_render_options_and_snake():
     entry = BallotOption(
         "ALPHA", "Tutorial", "01", "A", 10.0,
