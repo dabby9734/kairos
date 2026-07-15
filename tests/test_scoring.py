@@ -76,9 +76,9 @@ def test_gaps(config):
 
 
 def test_lunch_penalty(config):
-    # 11:00-14:00 solid class -> no lunch block -> raw -1
+    # 11:00-14:00 solid class -> no lunch block -> raw -2 (lunch is critical)
     blocked = [choice("ALPHA", "Lecture", "1", sess("Monday", 660, 840))]
-    assert raw(blocked, config, "lunch") == -1
+    assert raw(blocked, config, "lunch") == -2
     # 11:00-12:00 class leaves 12:00-14:00 free -> ok
     fine = [choice("ALPHA", "Lecture", "1", sess("Monday", 660, 720))]
     assert raw(fine, config, "lunch") == 0

@@ -114,7 +114,7 @@ def compute_raw(choices, config) -> dict:
         if max(free_blocks, default=0) < prefs.lunch_minutes:
             lunchless += 1
     raw["gaps"] = -gap_minutes / 60
-    raw["lunch"] = -lunchless
+    raw["lunch"] = -2 * lunchless
 
     return raw
 
