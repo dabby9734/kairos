@@ -305,3 +305,41 @@ def test_score_raw_returns_weight_independent_entries(groups, config):
     other.preferences.weights = {k: v + 3 for k, v in config.preferences.weights.items()}
     # raw entries do not depend on weights; only the combo layout matters
     assert [e[0] for e in score_raw(space, config)] == [e[0] for e in score_raw(space, other)]
+
+
+def test_build_structure_collapse_produces_correct_arrangement(config):
+    # Week-twin collapse: 01 odd / 02 even at the same Mon slot -> one collapsed
+    # template holding both members -> one arrangement with variant_count 2 and both
+    # class numbers offered as a bid (mirrors test_rank_arrangements_collapses_week_twins).
+    from optimiser.search import build_arrangement_structure, rank_arrangements
+
+    odd = frozenset({1, 3, 5})
+    even = frozenset({2, 4, 6})
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    tut_odd = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 840, 900, odd, "COM1"),))
+    tut_even = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 840, 900, even, "COM1"),))
+    space = _space((lec, tut_odd), (lec, tut_even))
+    structure = build_arrangement_structure(space)
+    assert [len(t.member_indices) for t in structure] == [2]  # collapse branch: one 2-member template
+    arrs = rank_arrangements(space, config, structure=structure)
+    assert len(arrs) == 1 and arrs[0].variant_count == 2
+    tut_bid = next(b for b in arrs[0].bids if b.lesson_type == "Tutorial")
+    assert dict(tut_bid.options) == {"01": "odd wks", "02": "even wks"}
+
+
+def test_build_structure_entangle_keeps_variants_separate(config):
+    # Opposite-week ALPHA/BETA at the same slot: product (4) != member count (2), so
+    # the group must NOT collapse -> two single-member templates, two arrangements.
+    from optimiser.search import build_arrangement_structure, rank_arrangements
+
+    odd = frozenset({1, 3, 5})
+    even = frozenset({2, 4, 6})
+    a_odd = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 840, 900, odd, "COM1"),))
+    a_even = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 840, 900, even, "COM1"),))
+    b_odd = Choice("BETA", "Laboratory", "L1", (Session("Monday", 840, 900, odd, "COM2"),))
+    b_even = Choice("BETA", "Laboratory", "L2", (Session("Monday", 840, 900, even, "COM2"),))
+    space = _space((a_odd, b_even), (a_even, b_odd))
+    structure = build_arrangement_structure(space)
+    assert [len(t.member_indices) for t in structure] == [1, 1]  # entangle branch: two single templates
+    arrs = rank_arrangements(space, config, structure=structure)
+    assert len(arrs) == 2 and all(a.variant_count == 1 for a in arrs)
