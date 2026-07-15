@@ -5,7 +5,7 @@ import itertools
 from dataclasses import dataclass
 
 from .model import LESSON_ABBREV, ChoiceGroup, week_label
-from .scoring import compute_raw, weight_raw
+from .scoring import compute_raw, pairing_impossibility, weight_raw
 
 
 @dataclass
@@ -109,9 +109,10 @@ def enumerate_clashfree(groups: list) -> EnumeratedSpace:
 def score_raw(space: EnumeratedSpace, config) -> list:
     """The expensive, weight-INDEPENDENT scoring pass: compute each combo's raw
     criteria once. Cache this; a weight change only needs weight_scored (below)."""
+    unpairable_modules, _ = pairing_impossibility(space.members)
     entries = []
     for combo in space.combos:
-        raw = compute_raw(list(combo), config)
+        raw = compute_raw(list(combo), config, unpairable_modules)
         assignment = {(c.module, c.lesson_type): c for c in combo}
         entries.append((raw, assignment, combo))
     return entries
