@@ -152,6 +152,47 @@ async def test_detail_shows_bids_block(state, tmp_path):
         assert "ALPHA TUT" in rendered
 
 
+def _slot_labels(app):
+    from textual.widgets import Label, ListView
+
+    # textual 8.2.8's Static/Label has no public renderable; read the raw stored content
+    return [str(lbl._Static__content) for lbl in app.query_one("#slot-list", ListView).query(Label)]
+
+
+async def test_slot_list_lists_balloted_slots(state, tmp_path):
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        labels = _slot_labels(app)
+        # ALPHA Tutorial is a balloted slot; BETA Lecture is fixed and excluded
+        assert any("ALPHA TUT" in t for t in labels)
+        assert not any("LEC" in t for t in labels)
+
+
+async def test_lock_slot_marks_and_reduces(state, tmp_path):
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        before = len(app.state.top_arrangements())
+        slot_list = app.query_one("#slot-list", ListView)
+        app.set_focus(slot_list)
+        slot_list.index = 0  # ALPHA Tutorial
+        await pilot.press("l")
+        assert len(app.state.top_arrangements()) < before
+        assert any("🔒" in t for t in _slot_labels(app))
+
+
+async def test_lock_then_unlock_restores(state, tmp_path):
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        before = len(app.state.top_arrangements())
+        slot_list = app.query_one("#slot-list", ListView)
+        app.set_focus(slot_list)
+        slot_list.index = 0
+        await pilot.press("l")   # lock ALPHA Tutorial
+        await pilot.press("l")   # unlock the same row (index 0 restored)
+        assert len(app.state.top_arrangements()) == before
+        assert not any("🔒" in t for t in _slot_labels(app))
+
+
 async def test_all_criteria_met_shown_when_no_warnings(state, tmp_path, monkeypatch):
     from rich.console import Console
 

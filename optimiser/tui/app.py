@@ -78,7 +78,8 @@ class OptimiserApp(App):
     CSS = """
     #controls { width: 42; }
     #results { width: 1fr; }
-    #tt-list { height: 40%; }
+    #tt-list { height: 30%; }
+    #slot-list { height: 20%; }
     #detail { height: 1fr; }
     """
 
@@ -91,6 +92,7 @@ class OptimiserApp(App):
         ("e", "export_ballot", "export ballot"),
         ("c", "copy_link", "copy link"),
         ("b", "toggle_ballot", "ballot view"),
+        ("l", "toggle_lock", "lock slot"),
         ("[", "move_priority_up", "priority up"),
         ("]", "move_priority_down", "priority down"),
         ("q", "quit", "quit"),
@@ -141,6 +143,7 @@ class OptimiserApp(App):
                         )
             with Vertical(id="results"):
                 yield ListView(id="tt-list")
+                yield ListView(id="slot-list")
                 yield Static(id="detail")
         yield Footer()
 
@@ -162,7 +165,23 @@ class OptimiserApp(App):
             tt_list.index = min(self.selected, len(top) - 1)
         self._refresh_detail()
 
+    def _refresh_slots(self) -> None:
+        slot_list = self.query_one("#slot-list", ListView)
+        prev = slot_list.index
+        slot_list.clear()
+        top = self.state.top_arrangements()
+        if top:
+            arr = top[self.selected]
+            for bid in arr.bids:
+                abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
+                class_no = arr.assignment[(bid.module, bid.lesson_type)].class_no
+                lock = "🔒 " if self.state.is_locked(bid.module, abbrev) else ""
+                slot_list.append(ListItem(Label(f"{lock}{bid.module} {abbrev} → {class_no}")))
+        if slot_list.children and prev is not None:
+            slot_list.index = min(prev, len(slot_list.children) - 1)
+
     def _refresh_detail(self) -> None:
+        self._refresh_slots()
         detail = self.query_one("#detail", Static)
         top = self.state.top_arrangements()
         if not top:
@@ -215,6 +234,26 @@ class OptimiserApp(App):
     def action_toggle_ballot(self) -> None:
         self.ballot_mode = not self.ballot_mode
         self._refresh_detail()
+
+    def action_toggle_lock(self) -> None:
+        slot_list = self.query_one("#slot-list", ListView)
+        top = self.state.top_arrangements()
+        if slot_list.index is None or not top:
+            return
+        arr = top[self.selected]
+        if slot_list.index >= len(arr.bids):
+            return
+        bid = arr.bids[slot_list.index]
+        abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
+        if self.state.is_locked(bid.module, abbrev):
+            ok = self.state.clear_lock(bid.module, abbrev)
+        else:
+            class_no = arr.assignment[(bid.module, bid.lesson_type)].class_no
+            ok = self.state.set_lock(bid.module, abbrev, class_no)
+        if not ok:
+            self.notify(f"locking {bid.module} {abbrev} leaves no clash-free timetable")
+            return
+        self._refresh_results()
 
     def action_save_config(self) -> None:
         self.config_path.write_text(yaml.safe_dump(self.state.to_config_yaml(), sort_keys=False))
