@@ -78,10 +78,11 @@ class OptimiserApp(App):
     CSS = """
     #controls { width: 42; }
     #results { width: 1fr; }
-    #tt-list { height: 25%; }
-    #slot-list { height: 15%; }
+    #top-row { height: 30%; }
+    #tt-list { width: 45%; border: round $panel; border-title-color: $text; }
+    #warnings { width: 1fr; border: round $panel; border-title-color: $text; }
+    #slot-list { height: 15%; border: round $panel; border-title-color: $text; }
     #detail-scroll { height: 1fr; }
-    #warnings { height: 10; border: round $panel; }
     """
 
     BINDINGS = [
@@ -143,13 +144,18 @@ class OptimiserApp(App):
                             id="priority-list",
                         )
             with Vertical(id="results"):
-                yield ListView(id="tt-list")
-                yield ListView(id="slot-list")
+                with Horizontal(id="top-row"):
+                    tt_list = ListView(id="tt-list")
+                    tt_list.border_title = "Timetables"
+                    yield tt_list
+                    warnings = VerticalScroll(Static(id="warnings-text"), id="warnings")
+                    warnings.border_title = "Warnings"
+                    yield warnings
+                slot_list = ListView(id="slot-list")
+                slot_list.border_title = "Classes"
+                yield slot_list
                 with VerticalScroll(id="detail-scroll"):
                     yield Static(id="detail")
-                warnings = VerticalScroll(Static(id="warnings-text"), id="warnings")
-                warnings.border_title = "Warnings"
-                yield warnings
         yield Footer()
 
     def on_mount(self) -> None:
