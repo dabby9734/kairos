@@ -80,8 +80,8 @@ class OptimiserApp(App):
     #results { width: 1fr; }
     #tt-list { height: 25%; }
     #slot-list { height: 15%; }
-    #detail { height: 1fr; }
-    #warnings { height: 30%; border: round $primary; }
+    #detail-scroll { height: 1fr; }
+    #warnings { height: 10; border: round $panel; }
     """
 
     BINDINGS = [
@@ -145,7 +145,8 @@ class OptimiserApp(App):
             with Vertical(id="results"):
                 yield ListView(id="tt-list")
                 yield ListView(id="slot-list")
-                yield Static(id="detail")
+                with VerticalScroll(id="detail-scroll"):
+                    yield Static(id="detail")
                 warnings = VerticalScroll(Static(id="warnings-text"), id="warnings")
                 warnings.border_title = "Warnings"
                 yield warnings
