@@ -147,3 +147,28 @@ def test_non_overlapping_day_uses_single_lane():
     mon = next(i for i, l in enumerate(lines) if l.startswith("Mon"))
     assert "AAA" in lines[mon] and "BBB" in lines[mon]   # both share the single lane
     assert lines[mon + 1].startswith("       ")          # next line is agenda (7 spaces), not a 2nd lane
+
+
+def test_preview_bar_is_blink_styled_and_shows_both():
+    # Class currently on Monday; preview a candidate Tuesday slot for the SAME class.
+    assignment = {("CS2030S", "Tutorial"): _choice("CS2030S", "Tutorial", "01", "Monday", 840, 900)}
+    sig = frozenset({("Tuesday", 540, 600, False)})
+    colours = module_colours(["CS2030S"])
+    # plain text: current Monday strip stays; a Tuesday (preview) agenda line appears
+    text = _plain(render_week_rich(assignment, colours, preview=("CS2030S", "Tutorial", sig)))
+    mon = _day_row(text, "Mon")
+    assert "CS2030S" in mon                       # current strip still shown (show-both)
+    assert "0900-1000 CS2030S TUT (preview)" in text  # candidate agenda'd on Tuesday
+    # ANSI: the preview bar carries the blink escape (\x1b[5m)
+    console = Console(width=200, force_terminal=True, color_system="standard")
+    with console.capture() as cap:
+        console.print(render_week_rich(assignment, colours, preview=("CS2030S", "Tutorial", sig)))
+    assert "\x1b[5m" in cap.get() or ";5m" in cap.get()
+
+
+def test_preview_none_unchanged():
+    assignment = {("CS2030S", "Tutorial"): _choice("CS2030S", "Tutorial", "01", "Monday", 840, 900)}
+    colours = module_colours(["CS2030S"])
+    assert _plain(render_week_rich(assignment, colours)) == _plain(
+        render_week_rich(assignment, colours, preview=None)
+    )
