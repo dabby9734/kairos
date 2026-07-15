@@ -319,22 +319,19 @@ class OptimiserApp(App):
         self._refresh_detail()
 
     def action_toggle_lock(self) -> None:
-        slot_list = self.query_one("#slot-list", ListView)
-        top = self.state.top_arrangements()
-        if slot_list.index is None or not top:
+        tlist = self.query_one("#timeslot-list", ListView)
+        if (self._current_class is None or tlist.index is None
+                or not (0 <= tlist.index < len(self._timeslots))):
             return
-        arr = top[self.selected]
-        if slot_list.index >= len(arr.bids):
-            return
-        bid = arr.bids[slot_list.index]
-        abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
-        if self.state.is_locked(bid.module, abbrev):
-            ok = self.state.clear_lock(bid.module, abbrev)
+        module, lesson_type = self._current_class
+        abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
+        row = self._timeslots[tlist.index]
+        if self.state.locked_sig(module, lesson_type) == row["sig"]:
+            ok = self.state.clear_lock(module, abbrev)
         else:
-            class_no = arr.assignment[(bid.module, bid.lesson_type)].class_no
-            ok = self.state.set_lock(bid.module, abbrev, class_no)
+            ok = self.state.set_lock(module, abbrev, row["rep"])
         if not ok:
-            self.notify(f"locking {bid.module} {abbrev} leaves no clash-free timetable")
+            self.notify(f"locking {module} {abbrev} leaves no clash-free timetable")
             return
         self._refresh_results()
 
