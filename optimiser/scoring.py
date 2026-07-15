@@ -56,7 +56,48 @@ def tough_day_peaks(choices, config) -> dict:
     return peaks
 
 
-def compute_raw(choices, config) -> dict:
+def pairing_impossibility(members):
+    """From space.members ((module, lesson_type) -> {footprint: [Choice]}),
+    find pairings that can never occur because the offered slots share no campus
+    day. Returns (unpairable_modules, unpairable_slots):
+      - unpairable_modules: modules WITH a campus lecture whose non-lecture slots
+        can NONE fall on a lecture day -> scoring counts them as satisfied.
+      - unpairable_slots: {(module, lesson_type)} non-lecture slots that can never
+        reach a lecture day -> their same-day warning is suppressed.
+    Days are taken over offered campus (non-online) sessions, matching the
+    same_day_pairing criterion (which ignores online lectures)."""
+    lec_days: dict = {}   # module -> set of campus days its lecture is offered on
+    slot_days: dict = {}  # (module, lesson_type) -> set of campus days offered
+    for (module, lesson_type), by_fp in members.items():
+        days = {
+            s.day
+            for choices in by_fp.values()
+            for c in choices
+            for s in c.sessions
+            if not s.online
+        }
+        if lesson_type == "Lecture":
+            lec_days.setdefault(module, set()).update(days)
+        else:
+            slot_days.setdefault((module, lesson_type), set()).update(days)
+
+    unpairable_slots = set()
+    pairable_by_module: dict = {}  # module -> any non-lecture slot pairable?
+    for (module, lesson_type), days in slot_days.items():
+        ld = lec_days.get(module)
+        pairable = bool(ld) and bool(days & ld)
+        if ld and not pairable:
+            unpairable_slots.add((module, lesson_type))
+        if ld:
+            pairable_by_module[module] = pairable_by_module.get(module, False) or pairable
+
+    unpairable_modules = frozenset(
+        module for module, pairable in pairable_by_module.items() if not pairable
+    )
+    return unpairable_modules, frozenset(unpairable_slots)
+
+
+def compute_raw(choices, config, unpairable_modules=frozenset()) -> dict:
     prefs = config.preferences
     campus = [s for c in choices for s in c.sessions if not s.online]
     by_day: dict = {}
@@ -91,7 +132,7 @@ def compute_raw(choices, config) -> dict:
         if c.lesson_type != "Lecture"
         and any(s.day in lecture_days.get(c.module, ()) for s in c.sessions)
     }
-    raw["same_day_pairing"] = len(paired_modules)
+    raw["same_day_pairing"] = len(paired_modules | unpairable_modules)
 
     raw["free_days"] = sum(1 for day in WEEKDAYS if day not in by_day)
 
@@ -114,7 +155,7 @@ def compute_raw(choices, config) -> dict:
         if max(free_blocks, default=0) < prefs.lunch_minutes:
             lunchless += 1
     raw["gaps"] = -gap_minutes / 60
-    raw["lunch"] = -lunchless
+    raw["lunch"] = -2 * lunchless
 
     return raw
 

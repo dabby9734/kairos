@@ -19,6 +19,30 @@ def raw(choices, config, name):
     return breakdown[name][0]
 
 
+def config_stub():
+    from optimiser.config import DEFAULT_PREFERENCES, Config, Preferences
+
+    return Config(
+        acad_year="2026-2027", semester=1,
+        balloted_types=["TUT", "LAB", "REC", "SEC"],
+        modules={"ALPHA": 3}, fixed={}, priority=["ALPHA"],
+        preferences=Preferences(
+            earliest_start=600, latest_end=1080, max_difficulty_per_day=8,
+            lunch_start=660, lunch_end=840, lunch_minutes=60,
+            weights=dict(DEFAULT_PREFERENCES["weights"]),
+        ),
+        alternatives_per_module=4, top_n=5,
+    )
+
+
+def _members(*choices):
+    # Mirror space.members: (module, lesson_type) -> {footprint: [Choice]}
+    members: dict = {}
+    for c in choices:
+        members.setdefault((c.module, c.lesson_type), {}).setdefault(c.footprint, []).append(c)
+    return members
+
+
 def test_time_window_penalty(config):
     # 09:00-11:00 class with earliest 10:00 -> 60 min outside -> raw -1.0
     c = choice("ALPHA", "Tutorial", "01", sess("Monday", 540, 660))
@@ -76,9 +100,9 @@ def test_gaps(config):
 
 
 def test_lunch_penalty(config):
-    # 11:00-14:00 solid class -> no lunch block -> raw -1
+    # 11:00-14:00 solid class -> no lunch block -> raw -2 (lunch is critical)
     blocked = [choice("ALPHA", "Lecture", "1", sess("Monday", 660, 840))]
-    assert raw(blocked, config, "lunch") == -1
+    assert raw(blocked, config, "lunch") == -2
     # 11:00-12:00 class leaves 12:00-14:00 free -> ok
     fine = [choice("ALPHA", "Lecture", "1", sess("Monday", 660, 720))]
     assert raw(fine, config, "lunch") == 0
@@ -157,3 +181,57 @@ def test_tough_days_week_aware_penalises_overlapping_weeks(config):
         choice("BETA", "Recitation", "R1", Session("Monday", 840, 900, w13, "COM1")),
     ]
     assert raw(cs, config, "tough_days") == pytest.approx(-2)
+
+
+def test_pairing_impossibility_flags_disjoint_module():
+    from optimiser.scoring import pairing_impossibility
+
+    lec = choice("ALPHA", "Lecture", "1", sess("Monday", 600, 720))
+    tut = choice("ALPHA", "Tutorial", "01", sess("Tuesday", 840, 900))  # never Monday
+    unpair_mods, unpair_slots = pairing_impossibility(_members(lec, tut))
+    assert unpair_mods == frozenset({"ALPHA"})
+    assert unpair_slots == frozenset({("ALPHA", "Tutorial")})
+
+
+def test_pairing_impossibility_pairable_module_is_empty():
+    from optimiser.scoring import pairing_impossibility
+
+    lec = choice("ALPHA", "Lecture", "1", sess("Monday", 600, 720))
+    tut = choice("ALPHA", "Tutorial", "01", sess("Monday", 840, 900))  # shares Monday
+    unpair_mods, unpair_slots = pairing_impossibility(_members(lec, tut))
+    assert unpair_mods == frozenset()
+    assert unpair_slots == frozenset()
+
+
+def test_pairing_impossibility_mixed_flags_only_impossible_slot():
+    from optimiser.scoring import pairing_impossibility
+
+    lec = choice("ALPHA", "Lecture", "1", sess("Monday", 600, 720))
+    tut = choice("ALPHA", "Tutorial", "01", sess("Monday", 840, 900))   # pairable
+    lab = choice("ALPHA", "Laboratory", "L1", sess("Tuesday", 840, 900))  # impossible
+    unpair_mods, unpair_slots = pairing_impossibility(_members(lec, tut, lab))
+    assert unpair_mods == frozenset()  # module can still pair via the tutorial
+    assert unpair_slots == frozenset({("ALPHA", "Laboratory")})
+
+
+def test_pairing_impossibility_ignores_online_lecture():
+    from optimiser.scoring import pairing_impossibility
+
+    online_lec = choice("ALPHA", "Lecture", "1", sess("Monday", 600, 720, venue="E-Learn_C"))
+    tut = choice("ALPHA", "Tutorial", "01", sess("Tuesday", 840, 900))
+    unpair_mods, unpair_slots = pairing_impossibility(_members(online_lec, tut))
+    # no campus lecture -> pairing does not apply -> nothing flagged
+    assert unpair_mods == frozenset()
+    assert unpair_slots == frozenset()
+
+
+def test_compute_raw_counts_unpairable_module_as_satisfied():
+    from optimiser.scoring import compute_raw
+
+    lec = choice("ALPHA", "Lecture", "1", sess("Monday", 600, 720))
+    tut = choice("ALPHA", "Tutorial", "01", sess("Tuesday", 840, 900))  # does not pair
+    cs = [lec, tut]
+    # default: unpaired -> 0
+    assert compute_raw(cs, config_stub())["same_day_pairing"] == 0
+    # declared unpairable -> counts as satisfied (no penalty)
+    assert compute_raw(cs, config_stub(), frozenset({"ALPHA"}))["same_day_pairing"] == 1

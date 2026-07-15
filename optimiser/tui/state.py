@@ -6,6 +6,7 @@ from .. import ballot
 from ..model import LESSON_ABBREV
 from ..search import (
     EnumeratedSpace,
+    build_arrangement_structure,
     enumerate_clashfree,
     find_irreconcilable,
     prepare_groups,
@@ -54,6 +55,7 @@ class AppState:
     arrangements: list = None
     base_groups: list = None           # raw groups, for re-locking rebuilds
     _raw_cache: list = None            # cached score_raw(space); reused by reweight()
+    _arr_structure: list = None        # cached build_arrangement_structure(space); space-change only
 
     @classmethod
     def from_parts(cls, config, groups) -> "AppState":
@@ -82,16 +84,19 @@ class AppState:
 
     def _rebuild(self):
         self.groups, self.space = self._prepare_space()
+        self._arr_structure = build_arrangement_structure(self.space)
         return self.retune()
 
     def _rank_from(self, scored):
         # Shared ranking tail: build result.top and the capped arrangement list
         # from an already-scored list. arrangements is capped at
         # config.max_arrangements (keeps the TUI ListView bounded); top_n only
-        # sizes result.top (the raw timetable list).
+        # sizes result.top (the raw timetable list). The arrangement grouping is
+        # reused from the cached _arr_structure (rebuilt only on a space change).
         self.result = rank(self.space, self.config, scored=scored)
         self.arrangements = rank_arrangements(
-            self.space, self.config, limit=self.config.max_arrangements, scored=scored
+            self.space, self.config, limit=self.config.max_arrangements,
+            scored=scored, structure=self._arr_structure,
         )
         return self.result
 
@@ -137,16 +142,19 @@ class AppState:
         result is non-empty; otherwise roll everything back and return False."""
         snapshot = (
             {m: dict(v) for m, v in self.config.locked.items()},
-            self.groups, self.space, self.result, self.arrangements, self._raw_cache,
+            self.groups, self.space, self.result, self.arrangements,
+            self._raw_cache, self._arr_structure,
         )
         mutate()
         prepared, space = self._prepare_space()
         if not space.combos:
             (self.config.locked, self.groups, self.space,
-             self.result, self.arrangements, self._raw_cache) = snapshot
+             self.result, self.arrangements,
+             self._raw_cache, self._arr_structure) = snapshot
             return False
         self.groups = prepared
         self.space = space
+        self._arr_structure = build_arrangement_structure(space)
         self.retune()
         return True
 

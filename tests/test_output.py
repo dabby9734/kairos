@@ -199,3 +199,77 @@ def test_class_warnings_tough_day_reports_peak_week(config):
         ("BETA", "Recitation"): _choice("BETA", "Recitation", "R1", Session("Monday", 840, 900, w13, "COM1")),
     }
     assert "⚠ Monday exceeds max difficulty (10 > 8)" in class_warnings(a, config)
+
+
+def test_class_warnings_suppressed_when_weight_zero(config):
+    import copy
+
+    all_weeks = frozenset(range(1, 14))
+    # 11:00-14:00 solid ALPHA lecture -> normally a lunch warning
+    a = {("ALPHA", "Lecture"): Choice("ALPHA", "Lecture", "1",
+         (Session("Monday", 660, 840, all_weeks, "COM1"),))}
+    assert any("lunch" in w for w in class_warnings(a, config))
+    off = copy.deepcopy(config)
+    off.preferences.weights["lunch"] = 0
+    assert not any("lunch" in w for w in class_warnings(a, off))
+
+
+def test_class_warnings_pairing_suppressed_when_weight_zero(config):
+    import copy
+
+    all_weeks = frozenset(range(1, 14))
+    a = {
+        ("ALPHA", "Lecture"): Choice("ALPHA", "Lecture", "1",
+            (Session("Monday", 600, 720, all_weeks, "COM1"),)),
+        ("ALPHA", "Tutorial"): Choice("ALPHA", "Tutorial", "01",
+            (Session("Tuesday", 540, 600, all_weeks, "COM1"),)),
+    }
+    assert any("same-day" in w for w in class_warnings(a, config))
+    off = copy.deepcopy(config)
+    off.preferences.weights["same_day_pairing"] = 0
+    assert not any("same-day" in w for w in class_warnings(a, off))
+
+
+def test_class_warnings_pairing_suppressed_when_impossible(config):
+    from optimiser.search import EnumeratedSpace
+
+    all_weeks = frozenset(range(1, 14))
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, all_weeks, "COM1"),))
+    tut = Choice("ALPHA", "Tutorial", "01", (Session("Tuesday", 540, 600, all_weeks, "COM1"),))
+    a = {("ALPHA", "Lecture"): lec, ("ALPHA", "Tutorial"): tut}
+    # Offered slots: lecture only Monday, tutorial only Tuesday -> pairing impossible.
+    members = {
+        ("ALPHA", "Lecture"): {lec.footprint: [lec]},
+        ("ALPHA", "Tutorial"): {tut.footprint: [tut]},
+    }
+    space = EnumeratedSpace(combos=(), members=members)
+    # Without space: warns as before.
+    assert any("same-day" in w for w in class_warnings(a, config))
+    # With space: the impossible pairing is suppressed.
+    assert not any("same-day" in w for w in class_warnings(a, config, space=space))
+
+
+def test_class_warnings_pairing_mixed_suppresses_only_impossible(config):
+    from optimiser.search import EnumeratedSpace
+
+    all_weeks = frozenset(range(1, 14))
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, all_weeks, "COM1"),))
+    # Tutorial offered Monday (pairable) but placed Tuesday here; lab offered only Tuesday.
+    tut = Choice("ALPHA", "Tutorial", "01", (Session("Tuesday", 540, 600, all_weeks, "COM1"),))
+    tut_mon = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 780, 840, all_weeks, "COM1"),))
+    lab = Choice("ALPHA", "Laboratory", "L1", (Session("Tuesday", 780, 840, all_weeks, "COM1"),))
+    a = {
+        ("ALPHA", "Lecture"): lec,
+        ("ALPHA", "Tutorial"): tut,
+        ("ALPHA", "Laboratory"): lab,
+    }
+    members = {
+        ("ALPHA", "Lecture"): {lec.footprint: [lec]},
+        ("ALPHA", "Tutorial"): {tut.footprint: [tut], tut_mon.footprint: [tut_mon]},
+        ("ALPHA", "Laboratory"): {lab.footprint: [lab]},
+    }
+    space = EnumeratedSpace(combos=(), members=members)
+    warnings = class_warnings(a, config, space=space)
+    # Tutorial CAN pair (offered Monday) -> still warned; Lab can't -> suppressed.
+    assert any("ALPHA TUT" in w and "same-day" in w for w in warnings)
+    assert not any("ALPHA LAB" in w and "same-day" in w for w in warnings)

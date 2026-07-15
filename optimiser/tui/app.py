@@ -78,9 +78,10 @@ class OptimiserApp(App):
     CSS = """
     #controls { width: 42; }
     #results { width: 1fr; }
-    #tt-list { height: 30%; }
-    #slot-list { height: 20%; }
+    #tt-list { height: 25%; }
+    #slot-list { height: 15%; }
     #detail { height: 1fr; }
+    #warnings { height: 30%; border: round $primary; }
     """
 
     BINDINGS = [
@@ -145,6 +146,9 @@ class OptimiserApp(App):
                 yield ListView(id="tt-list")
                 yield ListView(id="slot-list")
                 yield Static(id="detail")
+                warnings = VerticalScroll(Static(id="warnings-text"), id="warnings")
+                warnings.border_title = "Warnings"
+                yield warnings
         yield Footer()
 
     def on_mount(self) -> None:
@@ -183,26 +187,27 @@ class OptimiserApp(App):
     def _refresh_detail(self) -> None:
         self._refresh_slots()
         detail = self.query_one("#detail", Static)
+        warnings_text = self.query_one("#warnings-text", Static)
         top = self.state.top_arrangements()
         if not top:
             detail.update("no clash-free timetables")
+            warnings_text.update("")
             return
         if self.ballot_mode:
             detail.update(render_snake(self.state.ballot_snake()))
+            warnings_text.update("")
             return
         arr = top[self.selected]
-        warnings = class_warnings(arr.assignment, self.state.config)
+        warnings = class_warnings(arr.assignment, self.state.config, space=self.state.space)
         if warnings:
-            warning_block = Text("\n".join(warnings), style="dim yellow")
+            warnings_text.update(Text("\n".join(warnings), style="dim yellow"))
         else:
-            warning_block = Text("✓ all criteria met", style="dim green")
+            warnings_text.update(Text("✓ all criteria met", style="dim green"))
         detail.update(
             Group(
                 Text(render_breakdown(arr.score, arr.breakdown)),
                 Text(""),
                 render_week_rich(arr.assignment, self.colours),
-                Text(""),
-                warning_block,
                 Text(""),
                 _render_bids(arr),
                 Text(""),

@@ -5,7 +5,7 @@ import itertools
 from dataclasses import dataclass
 
 from .model import LESSON_ABBREV, ChoiceGroup, week_label
-from .scoring import compute_raw, weight_raw
+from .scoring import compute_raw, pairing_impossibility, weight_raw
 
 
 @dataclass
@@ -109,9 +109,10 @@ def enumerate_clashfree(groups: list) -> EnumeratedSpace:
 def score_raw(space: EnumeratedSpace, config) -> list:
     """The expensive, weight-INDEPENDENT scoring pass: compute each combo's raw
     criteria once. Cache this; a weight change only needs weight_scored (below)."""
+    unpairable_modules, _ = pairing_impossibility(space.members)
     entries = []
     for combo in space.combos:
-        raw = compute_raw(list(combo), config)
+        raw = compute_raw(list(combo), config, unpairable_modules)
         assignment = {(c.module, c.lesson_type): c for c in combo}
         entries.append((raw, assignment, combo))
     return entries
@@ -185,6 +186,52 @@ def _arrangement_key(combo) -> frozenset:
     )
 
 
+@dataclass(frozen=True)
+class _ArrTemplate:
+    # A score-INDEPENDENT candidate source for rank_arrangements. Combos are
+    # referenced by index into the scored list (== space.combos order). For a
+    # collapsed group, member_indices holds every combo in the group and the
+    # representative is chosen at selection time by score; for an entangled
+    # member, member_indices is a single index.
+    member_indices: tuple
+    slot_opts: dict          # (module, lesson_type) -> {footprint: weeks}
+    variant_count: int
+    class_keys: tuple        # per member: tuple(sorted class_no); the collapse tiebreak
+
+
+def build_arrangement_structure(space) -> list:
+    """Precompute the weight/score-INDEPENDENT arrangement grouping for a space:
+    group combos by slot layout, build each group's slot_opts, and decide
+    collapse (full Cartesian product of same-slot week-variants) vs. entangled.
+    Reuse this across retunes/reweights; it changes only when the space does."""
+    groups: dict = {}  # _arrangement_key -> [combo index]
+    for i, combo in enumerate(space.combos):
+        groups.setdefault(_arrangement_key(combo), []).append(i)
+
+    templates: list = []
+    for indices in groups.values():
+        slot_opts: dict = {}  # keyed by FOOTPRINT (Cartesian guard counts footprints)
+        for i in indices:
+            for c in space.combos[i]:
+                slot_opts.setdefault((c.module, c.lesson_type), {})[c.footprint] = c.sessions[0].weeks
+        product = 1
+        for by_fp in slot_opts.values():
+            product *= len(by_fp)
+        if product == len(indices):  # independent -> collapse into one template
+            class_keys = tuple(
+                tuple(sorted(c.class_no for c in space.combos[i])) for i in indices
+            )
+            templates.append(_ArrTemplate(tuple(indices), slot_opts, len(indices), class_keys))
+        else:  # entangled -> one single-member template per combo
+            for i in indices:
+                single = {
+                    (c.module, c.lesson_type): {c.footprint: c.sessions[0].weeks}
+                    for c in space.combos[i]
+                }
+                templates.append(_ArrTemplate((i,), single, 1, ()))
+    return templates
+
+
 def _make_arrangement(entry, slot_opts, config, variant_count, space) -> "Arrangement":
     total, breakdown, assignment, _combo = entry
     bids = []
@@ -214,46 +261,42 @@ def _make_arrangement(entry, slot_opts, config, variant_count, space) -> "Arrang
     )
 
 
-def rank_arrangements(space, config, limit=None, scored=None) -> list:
+def _candidates_from_structure(structure, scored) -> list:
+    """Build (score, entry, slot_opts, variant_count) candidates from a cached
+    structure and a fresh scored list. Collapsed templates pick the highest-scoring
+    member (tiebreak by class_keys), reproducing the original per-group `min`."""
+    candidates = []
+    for tmpl in structure:
+        idxs = tmpl.member_indices
+        if len(idxs) == 1:
+            i = idxs[0]
+        else:
+            best_k = min(
+                range(len(idxs)),
+                key=lambda k: (-scored[idxs[k]][0], tmpl.class_keys[k]),
+            )
+            i = idxs[best_k]
+        candidates.append((scored[i][0], scored[i], tmpl.slot_opts, tmpl.variant_count))
+    return candidates
+
+
+def rank_arrangements(space, config, limit=None, scored=None, structure=None) -> list:
     """Collapse clash-free timetables that share a slot layout (differing only by
     interchangeable same-slot week-twins) into ranked Arrangements. Twins are
     offered as free per-slot bids only when the group's clash-free combos form a
     full Cartesian product; otherwise the combos are kept as separate
     arrangements (soundness — see design doc). Slot bids additionally list
-    same-footprint venue-twins expanded from space.members (I1)."""
+    same-footprint venue-twins expanded from space.members (I1).
+
+    The weight/score-INDEPENDENT grouping is factored into
+    build_arrangement_structure; pass a cached `structure` to skip re-grouping
+    (state.AppState does this). Omitting it rebuilds inline — behavior-preserving."""
     if scored is None:
         scored = _score_combos(space, config)
+    if structure is None:
+        structure = build_arrangement_structure(space)
 
-    groups: dict = {}
-    for entry in scored:
-        groups.setdefault(_arrangement_key(entry[3]), []).append(entry)
-
-    # First pass: run the collapse-vs-entangled soundness guard per group and
-    # collect cheap (score, ...build args) candidates WITHOUT constructing any
-    # Arrangement objects. Candidate score == the resulting arrangement's score,
-    # so selecting the top `limit` here is equivalent to building all then
-    # slicing by -score — but skips ~all throwaway bid/venue expansion.
-    candidates: list = []  # (score, entry, slot_opts, variant_count)
-    for entries in groups.values():
-        # keyed by FOOTPRINT (not class_no): the Cartesian soundness guard must
-        # count week-variants/footprints, never the venue-expanded class-number set
-        slot_opts: dict = {}  # (module, lesson_type) -> {footprint: weeks}
-        for _t, _b, _a, combo in entries:
-            for c in combo:
-                slot_opts.setdefault((c.module, c.lesson_type), {})[c.footprint] = c.sessions[0].weeks
-        product = 1
-        for by_fp in slot_opts.values():
-            product *= len(by_fp)
-        if product == len(entries):  # independent -> collapse
-            best = min(entries, key=lambda e: (-e[0], tuple(sorted(c.class_no for c in e[3]))))
-            candidates.append((best[0], best, slot_opts, len(entries)))
-        else:  # entangled -> keep each combo as its own arrangement
-            for entry in entries:
-                single = {
-                    (c.module, c.lesson_type): {c.footprint: c.sessions[0].weeks}
-                    for c in entry[3]
-                }
-                candidates.append((entry[0], entry, single, 1))
+    candidates = _candidates_from_structure(structure, scored)
 
     # Select winners by -score (stable in insertion order for ties, matching a
     # full sort), then build bids/venue-expansion ONLY for the survivors.
