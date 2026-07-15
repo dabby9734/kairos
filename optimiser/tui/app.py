@@ -12,7 +12,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Label, ListItem, ListView, Static, TabbedContent, TabPane
 
-from ..model import LESSON_ABBREV
+from ..model import DAYS, LESSON_ABBREV, fmt_time
 from ..output import class_warnings, render_breakdown, render_snake, share_url
 from .render import module_colours, render_week_rich
 from .widgets import Slider
@@ -74,6 +74,13 @@ def _render_bids(arrangement) -> Text:
     return Text("\n".join(lines), style="dim")
 
 
+def _fmt_sessions(sessions) -> str:
+    return ", ".join(
+        f"{s.day[:3]} {fmt_time(s.start)}-{fmt_time(s.end)}"
+        for s in sorted(sessions, key=lambda s: (DAYS.index(s.day), s.start))
+    )
+
+
 class OptimiserApp(App):
     CSS = """
     #controls { width: 42; }
@@ -81,7 +88,9 @@ class OptimiserApp(App):
     #top-row { height: 30%; }
     #tt-list { width: 45%; border: round $panel; border-title-color: $text; }
     #warnings { width: 1fr; border: round $panel; border-title-color: $text; }
-    #slot-list { height: 15%; border: round $panel; border-title-color: $text; }
+    #classes-row { height: 15%; }
+    #slot-list { width: 45%; border: round $panel; border-title-color: $text; }
+    #timeslot-list { width: 1fr; border: round $panel; border-title-color: $text; }
     #detail-scroll { height: 1fr; }
     """
 
@@ -95,6 +104,9 @@ class OptimiserApp(App):
         ("c", "copy_link", "copy link"),
         ("b", "toggle_ballot", "ballot view"),
         ("l", "toggle_lock", "lock slot"),
+        ("right", "focus_timeslots", "timeslots"),
+        ("left", "focus_classes", "classes"),
+        ("escape", "focus_classes", "back"),
         ("[", "move_priority_up", "priority up"),
         ("]", "move_priority_down", "priority down"),
         ("q", "quit", "quit"),
@@ -106,6 +118,8 @@ class OptimiserApp(App):
         self.config_path = Path(config_path)
         self.selected = 0
         self.ballot_mode = False
+        self._timeslots = []
+        self._current_class = None
         self.colours = module_colours(list(state.config.modules))
 
     def compose(self) -> ComposeResult:
@@ -151,9 +165,13 @@ class OptimiserApp(App):
                     warnings = VerticalScroll(Static(id="warnings-text"), id="warnings")
                     warnings.border_title = "Warnings"
                     yield warnings
-                slot_list = ListView(id="slot-list")
-                slot_list.border_title = "Classes"
-                yield slot_list
+                with Horizontal(id="classes-row"):
+                    slot_list = ListView(id="slot-list")
+                    slot_list.border_title = "Classes"
+                    yield slot_list
+                    timeslot_list = ListView(id="timeslot-list")
+                    timeslot_list.border_title = "Timeslots"
+                    yield timeslot_list
                 with VerticalScroll(id="detail-scroll"):
                     yield Static(id="detail")
         yield Footer()
@@ -165,34 +183,65 @@ class OptimiserApp(App):
 
     def _refresh_results(self) -> None:
         tt_list = self.query_one("#tt-list", ListView)
-        tt_list.clear()
         top = self.state.top_arrangements()
-        for i, arr in enumerate(top):
-            variants = f"  ({arr.variant_count} variants)" if arr.variant_count > 1 else ""
-            tt_list.append(ListItem(Label(f"#{i + 1}  {arr.score:+.1f}{variants}")))
-        if self.selected >= len(top):
-            self.selected = 0
-        if top:
-            tt_list.index = min(self.selected, len(top) - 1)
+        with self.prevent(ListView.Highlighted):
+            tt_list.clear()
+            for i, arr in enumerate(top):
+                variants = f"  ({arr.variant_count} variants)" if arr.variant_count > 1 else ""
+                tt_list.append(ListItem(Label(f"#{i + 1}  {arr.score:+.1f}{variants}")))
+            if self.selected >= len(top):
+                self.selected = 0
+            if top:
+                tt_list.index = min(self.selected, len(top) - 1)
+        self._refresh_slots()
+        self._populate_timeslots()
         self._refresh_detail()
 
     def _refresh_slots(self) -> None:
         slot_list = self.query_one("#slot-list", ListView)
         prev = slot_list.index
-        slot_list.clear()
+        with self.prevent(ListView.Highlighted):
+            slot_list.clear()
+            top = self.state.top_arrangements()
+            if top:
+                arr = top[self.selected]
+                for bid in arr.bids:
+                    abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
+                    class_no = arr.assignment[(bid.module, bid.lesson_type)].class_no
+                    lock = "🔒 " if self.state.is_locked(bid.module, abbrev) else ""
+                    slot_list.append(ListItem(Label(f"{lock}{bid.module} {abbrev} → {class_no}")))
+            if slot_list.children and prev is not None:
+                slot_list.index = min(prev, len(slot_list.children) - 1)
+
+    def _populate_timeslots(self) -> None:
+        tlist = self.query_one("#timeslot-list", ListView)
+        slot_list = self.query_one("#slot-list", ListView)
         top = self.state.top_arrangements()
-        if top:
-            arr = top[self.selected]
-            for bid in arr.bids:
-                abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
-                class_no = arr.assignment[(bid.module, bid.lesson_type)].class_no
-                lock = "🔒 " if self.state.is_locked(bid.module, abbrev) else ""
-                slot_list.append(ListItem(Label(f"{lock}{bid.module} {abbrev} → {class_no}")))
-        if slot_list.children and prev is not None:
-            slot_list.index = min(prev, len(slot_list.children) - 1)
+        self._timeslots = []
+        self._current_class = None
+        with self.prevent(ListView.Highlighted):
+            tlist.clear()
+            tlist.border_title = "Timeslots"
+            if top and slot_list.index is not None:
+                arr = top[self.selected]
+                if slot_list.index < len(arr.bids):
+                    bid = arr.bids[slot_list.index]
+                    self._current_class = (bid.module, bid.lesson_type)
+                    abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
+                    tlist.border_title = f"Timeslots: {bid.module} {abbrev}"
+                    self._timeslots = self.state.offered_timeslots(bid.module, bid.lesson_type)
+                    locked = self.state.locked_sig(bid.module, bid.lesson_type)
+                    locked_idx = 0
+                    for i, row in enumerate(self._timeslots):
+                        mark = "🔒 " if row["sig"] == locked else ""
+                        label = f"{mark}{_fmt_sessions(row['sessions'])} ({'/'.join(row['class_nos'])})"
+                        tlist.append(ListItem(Label(label)))
+                        if row["sig"] == locked:
+                            locked_idx = i
+                    if self._timeslots:
+                        tlist.index = locked_idx
 
     def _refresh_detail(self) -> None:
-        self._refresh_slots()
         detail = self.query_one("#detail", Static)
         warnings_text = self.query_one("#warnings-text", Static)
         top = self.state.top_arrangements()
@@ -205,6 +254,12 @@ class OptimiserApp(App):
             warnings_text.update("")
             return
         arr = top[self.selected]
+        preview = None
+        tlist = self.query_one("#timeslot-list", ListView)
+        if (tlist.has_focus and tlist.index is not None and self._current_class
+                and 0 <= tlist.index < len(self._timeslots)):
+            module, lesson_type = self._current_class
+            preview = (module, lesson_type, self._timeslots[tlist.index]["sig"])
         warnings = class_warnings(arr.assignment, self.state.config, space=self.state.space)
         if warnings:
             warnings_text.update(Text("\n".join(warnings), style="dim yellow"))
@@ -214,7 +269,7 @@ class OptimiserApp(App):
             Group(
                 Text(render_breakdown(arr.score, arr.breakdown)),
                 Text(""),
-                render_week_rich(arr.assignment, self.colours),
+                render_week_rich(arr.assignment, self.colours, preview=preview),
                 Text(""),
                 _render_bids(arr),
                 Text(""),
@@ -237,8 +292,16 @@ class OptimiserApp(App):
         self._refresh_results()
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        if event.list_view.id == "tt-list" and event.list_view.index is not None:
-            self.selected = event.list_view.index
+        lv = event.list_view
+        if lv.id == "tt-list" and lv.index is not None:
+            self.selected = lv.index
+            self._refresh_slots()
+            self._populate_timeslots()
+            self._refresh_detail()
+        elif lv.id == "slot-list":
+            self._populate_timeslots()
+            self._refresh_detail()
+        elif lv.id == "timeslot-list":
             self._refresh_detail()
 
     # --- actions ---
@@ -247,23 +310,28 @@ class OptimiserApp(App):
         self.ballot_mode = not self.ballot_mode
         self._refresh_detail()
 
+    def action_focus_timeslots(self) -> None:
+        self.query_one("#timeslot-list", ListView).focus()
+        self._refresh_detail()
+
+    def action_focus_classes(self) -> None:
+        self.query_one("#slot-list", ListView).focus()
+        self._refresh_detail()
+
     def action_toggle_lock(self) -> None:
-        slot_list = self.query_one("#slot-list", ListView)
-        top = self.state.top_arrangements()
-        if slot_list.index is None or not top:
+        tlist = self.query_one("#timeslot-list", ListView)
+        if (self._current_class is None or tlist.index is None
+                or not (0 <= tlist.index < len(self._timeslots))):
             return
-        arr = top[self.selected]
-        if slot_list.index >= len(arr.bids):
-            return
-        bid = arr.bids[slot_list.index]
-        abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
-        if self.state.is_locked(bid.module, abbrev):
-            ok = self.state.clear_lock(bid.module, abbrev)
+        module, lesson_type = self._current_class
+        abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
+        row = self._timeslots[tlist.index]
+        if self.state.locked_sig(module, lesson_type) == row["sig"]:
+            ok = self.state.clear_lock(module, abbrev)
         else:
-            class_no = arr.assignment[(bid.module, bid.lesson_type)].class_no
-            ok = self.state.set_lock(bid.module, abbrev, class_no)
+            ok = self.state.set_lock(module, abbrev, row["rep"])
         if not ok:
-            self.notify(f"locking {bid.module} {abbrev} leaves no clash-free timetable")
+            self.notify(f"locking {module} {abbrev} leaves no clash-free timetable")
             return
         self._refresh_results()
 

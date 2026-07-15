@@ -25,7 +25,7 @@ def module_colours(modules) -> dict:
     return {module: PALETTE[i % len(PALETTE)] for i, module in enumerate(modules)}
 
 
-def render_week_rich(assignment: dict, colours: dict) -> Group:
+def render_week_rich(assignment: dict, colours: dict, preview=None) -> Group:
     """A Rich renderable of the week grid. Each class is a coloured strip spanning
     its hours, labelled `MODULE [TYPE]` (or just `MODULE` when the strip is too
     narrow), with an agenda of times/venues below each day. Classes whose times
@@ -59,8 +59,21 @@ def render_week_rich(assignment: dict, colours: dict) -> Group:
                     choice.class_no,
                     session.venue,
                     session.online,
+                    False,  # blink
                 ))
         blocks.sort()
+
+        if preview is not None:
+            p_module, p_lesson_type, p_sig = preview
+            p_abbrev = LESSON_ABBREV.get(p_lesson_type, p_lesson_type)
+            for p_day, p_start, p_end, p_online in p_sig:
+                if p_day != day:
+                    continue
+                blocks.append((
+                    p_start, p_end, p_start // 60, (p_end + 59) // 60,
+                    p_module, p_abbrev, "", "", p_online, True,  # blink
+                ))
+            blocks.sort()
 
         # Lane assignment by real time-interval overlap: a block joins the first
         # lane whose last-placed session ends at or before this block starts
@@ -83,7 +96,7 @@ def render_week_rich(assignment: dict, colours: dict) -> Group:
         for li, lane in enumerate(lanes or [[]]):
             row = Text(f"{day[:3]:5}" if li == 0 else "     ")
             cursor = first_hour
-            for start, end, start_h, end_h, module, abbrev, class_no, venue, online in lane:
+            for start, end, start_h, end_h, module, abbrev, class_no, venue, online, blink in lane:
                 span_start = max(start_h, first_hour, cursor)
                 span_end = min(end_h, last_hour + 1)
                 if span_end <= span_start:
@@ -95,13 +108,16 @@ def render_week_rich(assignment: dict, colours: dict) -> Group:
                 full = f"{mark}{module} [{abbrev}]"
                 label = (full if len(full) <= width else f"{mark}{module}")[:width].ljust(width)
                 bg, fg = colours.get(module, ("white", "black"))
-                style = f"{fg} on {bg}" + (" dim" if online else "")
+                style = f"{fg} on {bg}" + (" dim" if online else "") + (" blink" if blink else "")
                 row.append(label, style=style)
                 cursor = span_end
             rows.append(row)
 
         # Agenda: every block for the day, sorted by start time.
-        for start, end, _sh, _eh, module, abbrev, class_no, venue, online in sorted(blocks):
+        for start, end, _sh, _eh, module, abbrev, class_no, venue, online, blink in sorted(blocks):
+            if blink:
+                rows.append(Text(f"       {fmt_time(start)}-{fmt_time(end)} {module} {abbrev} (preview)"))
+                continue
             note = " (online)" if online else ""
             rows.append(Text(
                 f"       {fmt_time(start)}-{fmt_time(end)} {module} "

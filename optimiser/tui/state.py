@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .. import ballot
-from ..model import LESSON_ABBREV
+from ..model import DAYS, LESSON_ABBREV
 from ..search import (
     EnumeratedSpace,
+    _slot_sig,
     build_arrangement_structure,
     enumerate_clashfree,
     find_irreconcilable,
@@ -171,6 +172,48 @@ class AppState:
                 if not slots:
                     self.config.locked.pop(module, None)
         return self._apply_locked_change(mutate)
+
+    def _base_group(self, module, lesson_type):
+        return next(
+            (g for g in self.base_groups
+             if g.module == module and g.lesson_type == lesson_type),
+            None,
+        )
+
+    def offered_timeslots(self, module, lesson_type) -> list:
+        """Distinct offered timeslots for a class, from the FULL offered set
+        (base_groups, so a current lock does not narrow it). One dict per distinct
+        _slot_sig, sorted by (day, start): sig, class_nos (sorted), sessions (a
+        representative choice's sessions), rep (representative class number)."""
+        group = self._base_group(module, lesson_type)
+        if group is None:
+            return []
+        by_sig: dict = {}
+        for choice in group.choices:
+            by_sig.setdefault(_slot_sig(choice), []).append(choice)
+        rows = []
+        for sig, choices in by_sig.items():
+            choices = sorted(choices, key=lambda c: c.class_no)
+            rows.append({
+                "sig": sig,
+                "class_nos": [c.class_no for c in choices],
+                "sessions": choices[0].sessions,
+                "rep": choices[0].class_no,
+            })
+        rows.sort(key=lambda r: (DAYS.index(r["sessions"][0].day), r["sessions"][0].start))
+        return rows
+
+    def locked_sig(self, module, lesson_type):
+        """The _slot_sig this class is currently locked to, or None."""
+        abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
+        class_no = (self.config.locked.get(module) or {}).get(abbrev)
+        if class_no is None:
+            return None
+        group = self._base_group(module, lesson_type)
+        if group is None:
+            return None
+        choice = next((c for c in group.choices if c.class_no == str(class_no)), None)
+        return _slot_sig(choice) if choice else None
 
     def move_priority(self, module: str, delta: int) -> None:
         order = self.config.priority

@@ -167,29 +167,37 @@ async def test_slot_list_lists_balloted_slots(state, tmp_path):
         assert not any("LEC" in t for t in labels)
 
 
-async def test_lock_slot_marks_and_reduces(state, tmp_path):
+async def test_lock_timeslot_marks_and_reduces(state, tmp_path):
     app = OptimiserApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         before = len(app.state.top_arrangements())
         slot_list = app.query_one("#slot-list", ListView)
         app.set_focus(slot_list)
-        slot_list.index = 0  # ALPHA Tutorial
-        await pilot.press("l")
+        slot_list.index = 0                 # ALPHA Tutorial
+        await pilot.pause()
+        await pilot.press("right")          # into Timeslots
+        app.query_one("#timeslot-list", ListView).index = 0  # Mon 14:00 (01)
+        await pilot.pause()
+        await pilot.press("l")              # lock that timeslot
         assert len(app.state.top_arrangements()) < before
-        assert any("🔒" in t for t in _slot_labels(app))
+        assert any("🔒" in t for t in _timeslot_labels(app))
 
 
-async def test_lock_then_unlock_restores(state, tmp_path):
+async def test_lock_then_unlock_timeslot_restores(state, tmp_path):
     app = OptimiserApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         before = len(app.state.top_arrangements())
         slot_list = app.query_one("#slot-list", ListView)
         app.set_focus(slot_list)
         slot_list.index = 0
-        await pilot.press("l")   # lock ALPHA Tutorial
-        await pilot.press("l")   # unlock the same row (index 0 restored)
+        await pilot.pause()
+        await pilot.press("right")
+        app.query_one("#timeslot-list", ListView).index = 0
+        await pilot.pause()
+        await pilot.press("l")              # lock
+        await pilot.press("l")              # unlock the same (now-locked) timeslot
         assert len(app.state.top_arrangements()) == before
-        assert not any("🔒" in t for t in _slot_labels(app))
+        assert not any("🔒" in t for t in _timeslot_labels(app))
 
 
 async def test_all_criteria_met_shown_when_no_warnings(state, tmp_path, monkeypatch):
@@ -203,3 +211,45 @@ async def test_all_criteria_met_shown_when_no_warnings(state, tmp_path, monkeypa
         with console.capture() as cap:
             console.print(warnings_text._Static__content)
         assert "all criteria met" in cap.get()
+
+
+def _timeslot_labels(app):
+    from textual.widgets import Label, ListView
+
+    return [str(lbl._Static__content) for lbl in app.query_one("#timeslot-list", ListView).query(Label)]
+
+
+async def test_timeslots_populate_from_highlighted_class(state, tmp_path):
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        slot_list = app.query_one("#slot-list", ListView)
+        app.set_focus(slot_list)
+        slot_list.index = 0  # ALPHA Tutorial
+        await pilot.pause()
+        labels = _timeslot_labels(app)
+        # two offered timeslots: Mon 14:00 (01) and Tue 09:00 (02/03)
+        # (fmt_time renders "1400", not "14:00" — matches the rest of the codebase,
+        # e.g. tests/test_output.py's "Mon 1400-1500" for this same fixture)
+        assert any("Mon 1400-1500 (01)" in t for t in labels)
+        assert any("Tue 0900-1000 (02/03)" in t for t in labels)
+        assert "ALPHA TUT" in str(app.query_one("#timeslot-list", ListView).border_title)
+
+
+async def test_browsing_timeslot_shows_blinking_preview(state, tmp_path):
+    from rich.console import Console
+
+    app = OptimiserApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        slot_list = app.query_one("#slot-list", ListView)
+        app.set_focus(slot_list)
+        slot_list.index = 0
+        await pilot.pause()
+        await pilot.press("right")          # focus the Timeslots pane
+        tl = app.query_one("#timeslot-list", ListView)
+        assert tl.has_focus
+        tl.index = 1                         # highlight the Tue 09:00 candidate
+        await pilot.pause()
+        console = Console()
+        with console.capture() as cap:
+            console.print(app.query_one("#detail", Static)._Static__content)
+        assert "(preview)" in cap.get()      # candidate rendered as a preview bar

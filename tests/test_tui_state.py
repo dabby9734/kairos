@@ -303,3 +303,24 @@ def test_arr_structure_restored_on_rejected_lock(config):
     before = state._arr_structure
     assert state.set_lock("ALPHA", "TUT", "T1") is False  # empties the space -> rejected
     assert state._arr_structure is before  # rejected lock restored the prior structure
+
+
+def test_offered_timeslots_collapses_twins_and_sorts(state):
+    rows = state.offered_timeslots("ALPHA", "Tutorial")
+    # Fixture: 01 Mon 14:00-15:00; 02 & 03 both Tue 09:00-10:00 (share a slot sig).
+    # -> two rows, Monday before Tuesday.
+    assert [r["class_nos"] for r in rows] == [["01"], ["02", "03"]]
+    assert rows[0]["rep"] == "01" and rows[1]["rep"] == "02"
+    mon = rows[0]["sessions"][0]
+    assert (mon.day, mon.start, mon.end) == ("Monday", 840, 900)
+
+
+def test_offered_timeslots_unknown_class_is_empty(state):
+    assert state.offered_timeslots("NOPE", "Tutorial") == []
+
+
+def test_locked_sig_none_then_set(state):
+    assert state.locked_sig("ALPHA", "Tutorial") is None
+    assert state.set_lock("ALPHA", "TUT", "01") is True
+    sig = state.locked_sig("ALPHA", "Tutorial")
+    assert sig == frozenset({("Monday", 840, 900, False)})
