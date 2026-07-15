@@ -64,11 +64,22 @@ class AppState:
         state._rebuild()
         return state
 
-    def _rebuild(self):
+    def _prepare_space(self):
+        """Prepare groups from the raw base_groups under the current config and
+        enumerate the clash-free space WITHOUT committing to self. Callers decide
+        whether to keep the result (see _rebuild vs _apply_locked_change), so the
+        pipeline lives in one place and can't drift between them.
+
+        normalize_difficulties mutates config.modules in place; that is safe to
+        run on a to-be-discarded prepare because prepare_groups only ever narrows
+        a group's choices (never adds/removes a (module, abbrev) group), so the
+        abbrev set it resolves is invariant and re-normalising is idempotent."""
         prepared = prepare_groups(self.base_groups, self.config)
         normalize_difficulties(self.config, prepared)
-        self.groups = prepared
-        self.space = enumerate_clashfree(prepared)
+        return prepared, enumerate_clashfree(prepared)
+
+    def _rebuild(self):
+        self.groups, self.space = self._prepare_space()
         return self.retune()
 
     def retune(self):
@@ -113,9 +124,7 @@ class AppState:
             self.groups, self.space, self.result, self.arrangements,
         )
         mutate()
-        prepared = prepare_groups(self.base_groups, self.config)
-        normalize_difficulties(self.config, prepared)
-        space = enumerate_clashfree(prepared)
+        prepared, space = self._prepare_space()
         if not space.combos:
             (self.config.locked, self.groups, self.space,
              self.result, self.arrangements) = snapshot
