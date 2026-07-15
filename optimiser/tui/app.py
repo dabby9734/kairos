@@ -120,7 +120,6 @@ class OptimiserApp(App):
         self.ballot_mode = False
         self._timeslots = []
         self._current_class = None
-        self._suppress_highlight = False
         self.colours = module_colours(list(state.config.modules))
 
     def compose(self) -> ComposeResult:
@@ -185,8 +184,7 @@ class OptimiserApp(App):
     def _refresh_results(self) -> None:
         tt_list = self.query_one("#tt-list", ListView)
         top = self.state.top_arrangements()
-        self._suppress_highlight = True
-        try:
+        with self.prevent(ListView.Highlighted):
             tt_list.clear()
             for i, arr in enumerate(top):
                 variants = f"  ({arr.variant_count} variants)" if arr.variant_count > 1 else ""
@@ -195,8 +193,6 @@ class OptimiserApp(App):
                 self.selected = 0
             if top:
                 tt_list.index = min(self.selected, len(top) - 1)
-        finally:
-            self._suppress_highlight = False
         self._refresh_slots()
         self._populate_timeslots()
         self._refresh_detail()
@@ -204,8 +200,7 @@ class OptimiserApp(App):
     def _refresh_slots(self) -> None:
         slot_list = self.query_one("#slot-list", ListView)
         prev = slot_list.index
-        self._suppress_highlight = True
-        try:
+        with self.prevent(ListView.Highlighted):
             slot_list.clear()
             top = self.state.top_arrangements()
             if top:
@@ -217,8 +212,6 @@ class OptimiserApp(App):
                     slot_list.append(ListItem(Label(f"{lock}{bid.module} {abbrev} → {class_no}")))
             if slot_list.children and prev is not None:
                 slot_list.index = min(prev, len(slot_list.children) - 1)
-        finally:
-            self._suppress_highlight = False
 
     def _populate_timeslots(self) -> None:
         tlist = self.query_one("#timeslot-list", ListView)
@@ -226,8 +219,7 @@ class OptimiserApp(App):
         top = self.state.top_arrangements()
         self._timeslots = []
         self._current_class = None
-        self._suppress_highlight = True
-        try:
+        with self.prevent(ListView.Highlighted):
             tlist.clear()
             tlist.border_title = "Timeslots"
             if top and slot_list.index is not None:
@@ -248,8 +240,6 @@ class OptimiserApp(App):
                             locked_idx = i
                     if self._timeslots:
                         tlist.index = locked_idx
-        finally:
-            self._suppress_highlight = False
 
     def _refresh_detail(self) -> None:
         detail = self.query_one("#detail", Static)
@@ -302,8 +292,6 @@ class OptimiserApp(App):
         self._refresh_results()
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        if self._suppress_highlight:
-            return
         lv = event.list_view
         if lv.id == "tt-list" and lv.index is not None:
             self.selected = lv.index
