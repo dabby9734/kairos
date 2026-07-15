@@ -33,6 +33,21 @@ def fmt_time(minutes: int) -> str:
     return f"{minutes // 60:02d}{minutes % 60:02d}"
 
 
+def week_label(weeks) -> str:
+    """Short human label for a session's teaching weeks: '' for the full 13-week
+    run (or empty), 'even wks'/'odd wks' for pure even/odd sets, else a compact
+    'wks 2,4,6'."""
+    weeks = frozenset(weeks)
+    if not weeks or weeks == frozenset(range(1, 14)):
+        return ""
+    ordered = sorted(weeks)
+    if all(w % 2 == 0 for w in ordered):
+        return "even wks"
+    if all(w % 2 == 1 for w in ordered):
+        return "odd wks"
+    return "wks " + ",".join(str(w) for w in ordered)
+
+
 @dataclass(frozen=True)
 class Session:
     day: str

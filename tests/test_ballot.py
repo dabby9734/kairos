@@ -82,3 +82,72 @@ def test_snake_cap(config):
         ("ALPHA", "Tutorial"): [opt("ALPHA", "Tutorial", f"{i:02d}", "A") for i in range(30)],
     }
     assert len(snake(options, config)) == 20
+
+
+def test_ranked_options_groups_week_twins(config):
+    # REAL space: odd/even same-slot twins that are freely swappable (full Cartesian
+    # with a non-clashing lecture) -> R(fp_odd) == R(fp_even), so they merge into one
+    # ballot cluster and appear in each other's tied_with (Fix C, provably sound).
+    from optimiser.model import Choice, ChoiceGroup, Session
+    from optimiser.search import enumerate_clashfree, rank
+
+    odd = frozenset({1, 3, 5})
+    even = frozenset({2, 4, 6})
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    c_odd = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 840, 900, odd, "COM1"),))
+    c_even = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 840, 900, even, "COM1"),))
+    groups = [
+        ChoiceGroup("ALPHA", "Lecture", [lec]),
+        ChoiceGroup("ALPHA", "Tutorial", [c_odd, c_even]),
+    ]
+    result = rank(enumerate_clashfree(groups), config)
+    options = ranked_options(result, config)[("ALPHA", "Tutorial")]
+    assert {o.class_no for o in options} == {"01", "02"}
+    by_no = {o.class_no: o for o in options}
+    assert by_no["01"].tied_with == ["02"]
+    assert by_no["02"].tied_with == ["01"]
+
+
+def test_ranked_options_keeps_entangled_twins_separate(config):
+    # ALPHA Tutorial and BETA Laboratory BOTH odd/even at the same slot: only the
+    # opposite-week pairings are clash-free, so R(fp_odd) != R(fp_even) for the
+    # tutorial twins -> they must NOT merge (Fix C soundness).
+    from optimiser.model import Choice, ChoiceGroup, Session
+    from optimiser.search import enumerate_clashfree, rank
+
+    odd = frozenset({1, 3, 5})
+    even = frozenset({2, 4, 6})
+    a_odd = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 840, 900, odd, "COM1"),))
+    a_even = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 840, 900, even, "COM1"),))
+    b_odd = Choice("BETA", "Laboratory", "L1", (Session("Monday", 840, 900, odd, "COM2"),))
+    b_even = Choice("BETA", "Laboratory", "L2", (Session("Monday", 840, 900, even, "COM2"),))
+    groups = [
+        ChoiceGroup("ALPHA", "Tutorial", [a_odd, a_even]),
+        ChoiceGroup("BETA", "Laboratory", [b_odd, b_even]),
+    ]
+    result = rank(enumerate_clashfree(groups), config)
+    tut = ranked_options(result, config)[("ALPHA", "Tutorial")]
+    assert {o.class_no for o in tut} == {"01", "02"}
+    assert all(o.tied_with == [] for o in tut)  # not interchangeable
+
+
+def test_ranked_options_groups_venue_twins(config):
+    # Same footprint, two class numbers (different venue) -> one member bucket, so
+    # both class numbers land in one ballot cluster with each other in tied_with
+    # (ballot side of I1 / Fix B).
+    from optimiser.model import Choice, ChoiceGroup, Session
+    from optimiser.search import enumerate_clashfree, rank
+
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    t_a = Choice("ALPHA", "Tutorial", "01", (Session("Tuesday", 540, 600, ALL_WEEKS, "COM1"),))
+    t_b = Choice("ALPHA", "Tutorial", "02", (Session("Tuesday", 540, 600, ALL_WEEKS, "COM2"),))
+    groups = [
+        ChoiceGroup("ALPHA", "Lecture", [lec]),
+        ChoiceGroup("ALPHA", "Tutorial", [t_a, t_b]),
+    ]
+    result = rank(enumerate_clashfree(groups), config)
+    tut = ranked_options(result, config)[("ALPHA", "Tutorial")]
+    assert {o.class_no for o in tut} == {"01", "02"}
+    by_no = {o.class_no: o for o in tut}
+    assert by_no["01"].tied_with == ["02"]
+    assert by_no["02"].tied_with == ["01"]

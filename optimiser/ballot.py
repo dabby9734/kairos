@@ -19,16 +19,58 @@ class BallotOption:
 
 
 def ranked_options(result, config) -> dict:
+    # Interchangeability via CLASH-SET equality (cheap + sound). Build the set of
+    # viable footprints (those in some clash-free timetable) with a representative
+    # choice each, then two same-slot footprints of a group are interchangeable
+    # iff they clash with the EXACT same set of viable other-group classes:
+    # swapping one for the other in any clash-free timetable introduces no new
+    # clash. This is ~O(viable^2) instead of O(combos * groups) rest-sets.
+    viable: dict = {}  # (module, lesson_type, footprint) -> representative Choice
+    for (module, lesson_type), fp_members in result.members.items():
+        for fp, choices in fp_members.items():
+            if (module, lesson_type, fp) in result.best_by_footprint:
+                viable[(module, lesson_type, fp)] = choices[0]
+
+    clashsets: dict = {}
+    for key, rep in viable.items():
+        group = (key[0], key[1])
+        clashsets[key] = frozenset(
+            other_key
+            for other_key, other_rep in viable.items()
+            if (other_key[0], other_key[1]) != group and other_rep.clashes(rep)
+        )
+
     options_by_group: dict = {}
     for (module, lesson_type), fp_members in result.members.items():
         if LESSON_ABBREV.get(lesson_type) not in config.balloted_types:
             continue
-        scored = []
+        # Cluster footprints. Two footprints join iff they share a slot signature
+        # (day/time/online) AND have EQUAL clash-sets (=> every clash-free
+        # timetable using one has a valid twin using the other).
+        clusters: list = []  # {sig, clash, best, choices}
         for fp, choices in fp_members.items():
-            best = result.best_by_footprint.get((module, lesson_type, fp))
-            if best is None:
+            key = (module, lesson_type, fp)
+            if key not in viable:
                 continue  # never part of any clash-free timetable
-            scored.append((best, choices))
+            best = result.best_by_footprint[key]
+            sig = frozenset((s.day, s.start, s.end, s.online) for s in choices[0].sessions)
+            clash = clashsets[key]
+            placed = False
+            for cl in clusters:
+                if cl["sig"] == sig and cl["clash"] == clash:
+                    cl["best"] = max(cl["best"], best)
+                    cl["choices"].extend(choices)
+                    placed = True
+                    break
+            if not placed:
+                clusters.append({"sig": sig, "clash": clash, "best": best, "choices": list(choices)})
+
+        # class numbers within a cluster fold in venue-twins (I1 for the ballot);
+        # sort by class_no for deterministic letters / ordering (M4)
+        scored = []
+        for cl in clusters:
+            cl_choices = sorted(cl["choices"], key=lambda c: c.class_no)
+            scored.append((cl["best"], cl_choices))
         scored.sort(key=lambda item: (-item[0], item[1][0].class_no))
 
         options = []

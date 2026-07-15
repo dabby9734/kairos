@@ -30,6 +30,7 @@ def test_load_config_defaults_and_difficulty(tmp_path):
     assert cfg.preferences.lunch_start == 660 and cfg.preferences.lunch_end == 840
     assert cfg.preferences.weights["tough_days"] == 5
     assert cfg.top_n == 5 and cfg.alternatives_per_module == 4
+    assert cfg.max_arrangements == 50  # default cap on distinct arrangements
     assert cfg.difficulty("ALPHA", "Tutorial") == 4
     assert cfg.difficulty("ALPHA", "Recitation") == 3  # unspecified component
     assert cfg.difficulty("BETA", "Laboratory") == 3  # shorthand int
@@ -46,6 +47,7 @@ preferences:
   earliest_start: "09:00"
   weights: {gaps: 7}
 top_n: 3
+max_arrangements: 12
 """,
         )
     )
@@ -53,6 +55,7 @@ top_n: 3
     assert cfg.preferences.weights["gaps"] == 7
     assert cfg.preferences.weights["lunch"] == 3  # unlisted weights keep defaults
     assert cfg.top_n == 3
+    assert cfg.max_arrangements == 12
 
 
 def test_load_config_rejects_bad_difficulty(tmp_path):
@@ -88,3 +91,13 @@ def test_config_from_dict_matches_load(tmp_path):
     assert from_dict.acad_year == from_file.acad_year
     assert from_dict.preferences.earliest_start == from_file.preferences.earliest_start
     assert from_dict.priority == from_file.priority
+
+
+def test_load_config_parses_locked(tmp_path):
+    cfg = load_config(write(tmp_path, BASE + "\nlocked:\n  ALPHA: {TUT: '02'}\n"))
+    assert cfg.locked == {"ALPHA": {"TUT": "02"}}
+
+
+def test_load_config_defaults_locked_empty(tmp_path):
+    cfg = load_config(write(tmp_path, BASE))
+    assert cfg.locked == {}

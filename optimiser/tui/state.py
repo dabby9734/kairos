@@ -6,10 +6,12 @@ from .. import ballot
 from ..model import LESSON_ABBREV
 from ..search import (
     EnumeratedSpace,
+    _score_combos,
     enumerate_clashfree,
     find_irreconcilable,
     prepare_groups,
     rank,
+    rank_arrangements,
 )
 
 _PREF_FIELDS = {
@@ -45,21 +47,50 @@ def normalize_difficulties(config, groups) -> None:
 @dataclass
 class AppState:
     config: object
-    groups: list
+    groups: list                       # prepared (post prepare_groups) groups
     space: EnumeratedSpace
     result: object = None
+    arrangements: list = None
+    base_groups: list = None           # raw groups, for re-locking rebuilds
 
     @classmethod
     def from_parts(cls, config, groups) -> "AppState":
-        prepared = prepare_groups(groups, config)
-        normalize_difficulties(config, prepared)
-        space = enumerate_clashfree(prepared)
-        state = cls(config=config, groups=prepared, space=space)
-        state.retune()
+        state = cls(
+            config=config,
+            groups=[],
+            space=EnumeratedSpace((), {}),
+            base_groups=list(groups),
+        )
+        state._rebuild()
         return state
 
+    def _prepare_space(self):
+        """Prepare groups from the raw base_groups under the current config and
+        enumerate the clash-free space WITHOUT committing to self. Callers decide
+        whether to keep the result (see _rebuild vs _apply_locked_change), so the
+        pipeline lives in one place and can't drift between them.
+
+        normalize_difficulties mutates config.modules in place; that is safe to
+        run on a to-be-discarded prepare because prepare_groups only ever narrows
+        a group's choices (never adds/removes a (module, abbrev) group), so the
+        abbrev set it resolves is invariant and re-normalising is idempotent."""
+        prepared = prepare_groups(self.base_groups, self.config)
+        normalize_difficulties(self.config, prepared)
+        return prepared, enumerate_clashfree(prepared)
+
+    def _rebuild(self):
+        self.groups, self.space = self._prepare_space()
+        return self.retune()
+
     def retune(self):
-        self.result = rank(self.space, self.config)
+        # Score every combo once, then share it with both consumers (M5). The
+        # arrangement list is capped at config.max_arrangements (keeps the TUI
+        # ListView bounded); top_n only sizes result.top (the raw timetable list).
+        scored = _score_combos(self.space, self.config)
+        self.result = rank(self.space, self.config, scored=scored)
+        self.arrangements = rank_arrangements(
+            self.space, self.config, limit=self.config.max_arrangements, scored=scored
+        )
         return self.result
 
     def is_empty(self) -> bool:
@@ -82,6 +113,41 @@ class AppState:
         setattr(self.config.preferences, name, value)
         return self.retune()
 
+    def is_locked(self, module: str, abbrev: str) -> bool:
+        return abbrev in (self.config.locked.get(module) or {})
+
+    def _apply_locked_change(self, mutate) -> bool:
+        """Mutate config.locked, rebuild the space, and commit only if the
+        result is non-empty; otherwise roll everything back and return False."""
+        snapshot = (
+            {m: dict(v) for m, v in self.config.locked.items()},
+            self.groups, self.space, self.result, self.arrangements,
+        )
+        mutate()
+        prepared, space = self._prepare_space()
+        if not space.combos:
+            (self.config.locked, self.groups, self.space,
+             self.result, self.arrangements) = snapshot
+            return False
+        self.groups = prepared
+        self.space = space
+        self.retune()
+        return True
+
+    def set_lock(self, module: str, abbrev: str, class_no: str) -> bool:
+        def mutate():
+            self.config.locked.setdefault(module, {})[abbrev] = str(class_no)
+        return self._apply_locked_change(mutate)
+
+    def clear_lock(self, module: str, abbrev: str) -> bool:
+        def mutate():
+            slots = self.config.locked.get(module)
+            if slots:
+                slots.pop(abbrev, None)
+                if not slots:
+                    self.config.locked.pop(module, None)
+        return self._apply_locked_change(mutate)
+
     def move_priority(self, module: str, delta: int) -> None:
         order = self.config.priority
         if module not in order:
@@ -93,6 +159,9 @@ class AppState:
 
     def top_timetables(self) -> list:
         return self.result.top
+
+    def top_arrangements(self) -> list:
+        return self.arrangements
 
     def ballot_options(self) -> dict:
         return ballot.ranked_options(self.result, self.config)
@@ -111,6 +180,7 @@ class AppState:
                 for code, spec in self.config.modules.items()
             },
             "fixed": self.config.fixed,
+            "locked": self.config.locked,
             "priority": list(self.config.priority),
             "preferences": {
                 "earliest_start": _fmt_clock(prefs.earliest_start),
@@ -122,4 +192,5 @@ class AppState:
             },
             "alternatives_per_module": self.config.alternatives_per_module,
             "top_n": self.config.top_n,
+            "max_arrangements": self.config.max_arrangements,
         }

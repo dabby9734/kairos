@@ -3,9 +3,9 @@ import itertools
 import pytest
 
 from optimiser.api import build_groups, semester_timetable
-from optimiser.model import ChoiceGroup
+from optimiser.model import Choice, ChoiceGroup, Session
 from optimiser.scoring import score_assignment
-from optimiser.search import find_irreconcilable, prepare_groups, search
+from optimiser.search import EnumeratedSpace, find_irreconcilable, prepare_groups, rank_arrangements, search
 
 
 @pytest.fixture
@@ -37,6 +37,33 @@ def test_prepare_groups_bad_fixed(alpha_json, config):
     gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))
     with pytest.raises(SystemExit):
         prepare_groups(gs, config)
+
+
+def test_prepare_groups_locks_to_slot_twins(alpha_json, config):
+    config.fixed = {}
+    config.locked = {"ALPHA": {"TUT": "02"}}
+    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))
+    prepared = prepare_groups(gs, config)
+    tut = next(g for g in prepared if g.key == ("ALPHA", "Tutorial"))
+    # 02 is the Tue 0900 slot; its venue-twin 03 stays, Mon 01 is dropped
+    assert sorted(c.class_no for c in tut.choices) == ["02", "03"]
+
+
+def test_prepare_groups_bad_locked(alpha_json, config):
+    config.fixed = {}
+    config.locked = {"ALPHA": {"TUT": "99"}}
+    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))
+    with pytest.raises(SystemExit):
+        prepare_groups(gs, config)
+
+
+def test_prepare_groups_fixed_beats_locked(beta_json, config):
+    config.fixed = {"BETA": {"LEC": "1"}}
+    config.locked = {"BETA": {"LEC": "2"}}
+    gs = build_groups("BETA", semester_timetable(beta_json, 1))
+    prepared = prepare_groups(gs, config)
+    lec = next(g for g in prepared if g.key == ("BETA", "Lecture"))
+    assert [c.class_no for c in lec.choices] == ["1"]  # fixed wins
 
 
 def test_search_footprint_dedup_and_clash(groups, config):
@@ -98,6 +125,18 @@ def test_search_equals_enumerate_then_rank(groups, config):
     assert split.evaluated == combined.evaluated
 
 
+def test_rank_scored_param_is_behavior_preserving(groups, config):
+    # rank must yield identical top/best_by_footprint whether or not a pre-scored
+    # list is supplied (Fix D / M5: score every combo only once per retune).
+    from optimiser.search import _score_combos
+    space = enumerate_clashfree(groups)
+    a = rank(space, config)
+    b = rank(space, config, scored=_score_combos(space, config))
+    assert [t for t, _, _ in a.top] == [t for t, _, _ in b.top]
+    assert a.best_by_footprint == b.best_by_footprint
+    assert a.evaluated == b.evaluated
+
+
 def test_enumerate_is_config_independent(groups, config):
     # Enumerated set does not depend on config; only ranking does.
     space = enumerate_clashfree(groups)
@@ -112,3 +151,128 @@ def test_enumerate_is_config_independent(groups, config):
     top_a = [t for t, _, _ in rank(space, cfg_a).top]
     top_b = [t for t, _, _ in rank(space, cfg_b).top]
     assert top_a != top_b  # weighting change changes ordering
+
+
+ALL_WEEKS = frozenset(range(1, 14))
+
+
+def _space(*combos):
+    # Derive a members map mirroring enumerate_clashfree: (module, lesson_type) ->
+    # {footprint: sorted[Choice]}. Combos carry reps; this lets rank_arrangements
+    # expand footprints to member class numbers (venue-twins) in tests.
+    members: dict = {}
+    for combo in combos:
+        for c in combo:
+            bucket = members.setdefault((c.module, c.lesson_type), {}).setdefault(c.footprint, [])
+            if c not in bucket:
+                bucket.append(c)
+    for grp in members.values():
+        for fp in grp:
+            grp[fp] = sorted(grp[fp], key=lambda c: c.class_no)
+    return EnumeratedSpace(combos=tuple(combos), members=members)
+
+
+def test_rank_arrangements_collapses_week_twins(config):
+    # ALPHA Tutorial twin at Mon 1400-1500: 01 odd weeks, 02 even weeks -> one
+    # arrangement offering both class numbers with week labels.
+    odd = frozenset({1, 3, 5})
+    even = frozenset({2, 4, 6})
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    tut_odd = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 840, 900, odd, "COM1"),))
+    tut_even = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 840, 900, even, "COM1"),))
+    arrs = rank_arrangements(_space((lec, tut_odd), (lec, tut_even)), config)
+    assert len(arrs) == 1
+    a = arrs[0]
+    assert a.variant_count == 2
+    tut_bid = next(b for b in a.bids if b.lesson_type == "Tutorial")
+    assert dict(tut_bid.options) == {"01": "odd wks", "02": "even wks"}
+    # Lecture is not a balloted type -> not in the bids block
+    assert all(b.lesson_type != "Lecture" for b in a.bids)
+
+
+def test_rank_arrangements_keeps_entangled_variants_separate(config):
+    # ALPHA Tutorial and BETA Laboratory BOTH at Mon 1400-1500 with odd/even
+    # splits: only the opposite-week pairings are clash-free, so picking one twin
+    # forces the other -> must NOT collapse into free per-slot bids.
+    odd = frozenset({1, 3, 5})
+    even = frozenset({2, 4, 6})
+    a_odd = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 840, 900, odd, "COM1"),))
+    a_even = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 840, 900, even, "COM1"),))
+    b_odd = Choice("BETA", "Laboratory", "L1", (Session("Monday", 840, 900, odd, "COM2"),))
+    b_even = Choice("BETA", "Laboratory", "L2", (Session("Monday", 840, 900, even, "COM2"),))
+    arrs = rank_arrangements(_space((a_odd, b_even), (a_even, b_odd)), config)
+    assert len(arrs) == 2  # entangled -> not collapsed
+    assert all(a.variant_count == 1 for a in arrs)
+
+
+def test_rank_arrangements_lists_venue_twins(config):
+    # Two class numbers at the SAME day/time/weeks but different venue share a
+    # footprint, so only one rep reaches combos. The SlotBid must still list BOTH
+    # class numbers (I1 / Fix B), while the Cartesian guard stays over footprints.
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    t_a = Choice("ALPHA", "Tutorial", "01", (Session("Tuesday", 540, 600, ALL_WEEKS, "COM1"),))
+    t_b = Choice("ALPHA", "Tutorial", "02", (Session("Tuesday", 540, 600, ALL_WEEKS, "COM2"),))
+    assert t_a.footprint == t_b.footprint  # venue not in footprint
+    space = EnumeratedSpace(
+        combos=((lec, t_a),),  # only the rep t_a is in combos
+        members={
+            ("ALPHA", "Lecture"): {lec.footprint: [lec]},
+            ("ALPHA", "Tutorial"): {t_a.footprint: [t_a, t_b]},
+        },
+    )
+    arrs = rank_arrangements(space, config)
+    assert len(arrs) == 1
+    tut_bid = next(b for b in arrs[0].bids if b.lesson_type == "Tutorial")
+    assert [n for n, _ in tut_bid.options] == ["01", "02"]
+
+
+def test_rank_arrangements_scored_param_is_behavior_preserving(config):
+    # Passing a pre-scored list must produce identical arrangements (Fix D / M5).
+    from optimiser.search import _score_combos
+    odd = frozenset({1, 3, 5})
+    even = frozenset({2, 4, 6})
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    tut_odd = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 840, 900, odd, "COM1"),))
+    tut_even = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 840, 900, even, "COM1"),))
+    space = _space((lec, tut_odd), (lec, tut_even))
+    a = rank_arrangements(space, config)
+    b = rank_arrangements(space, config, scored=_score_combos(space, config))
+    key = lambda arrs: [(x.score, [(bd.module, bd.lesson_type, bd.options) for bd in x.bids]) for x in arrs]
+    assert key(a) == key(b)
+
+
+def test_rank_arrangements_ranks_by_best_and_limits(config):
+    # Two genuinely different arrangements (different tutorial days); the higher
+    # scorer comes first; limit truncates.
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    tut_mon = Choice("ALPHA", "Tutorial", "01", (Session("Monday", 780, 840, ALL_WEEKS, "COM1"),))
+    tut_fri = Choice("ALPHA", "Tutorial", "05", (Session("Friday", 780, 840, ALL_WEEKS, "COM1"),))
+    arrs = rank_arrangements(_space((lec, tut_mon), (lec, tut_fri)), config)
+    assert len(arrs) == 2
+    assert arrs[0].score >= arrs[1].score          # best-first
+    assert len(rank_arrangements(_space((lec, tut_mon), (lec, tut_fri)), config, limit=1)) == 1
+
+
+def test_rank_arrangements_materializing_winners_matches_slice(config):
+    # Building only the top `limit` arrangements must not change WHICH arrangements
+    # appear or their -score order versus building all then slicing.
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    combos = tuple(
+        (lec, Choice("ALPHA", "Tutorial", f"{i:02d}", (Session(day, 780, 840, ALL_WEEKS, "COM1"),)))
+        for i, day in enumerate(days, start=1)
+    )
+    space = _space(*combos)
+    everything = rank_arrangements(space, config)
+    assert len(everything) == 6
+
+    def sig(arrs):
+        return [(a.score, [(b.module, b.lesson_type, b.options) for b in a.bids]) for a in arrs]
+
+    capped = rank_arrangements(space, config, limit=3)
+    assert len(capped) == 3
+    scores = [a.score for a in capped]
+    assert scores == sorted(scores, reverse=True)          # -score order preserved
+    assert sig(capped) == sig(everything[:3])              # same arrangements, same order
+    # limit >= population returns everything unchanged
+    assert sig(rank_arrangements(space, config, limit=50)) == sig(everything)

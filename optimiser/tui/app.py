@@ -12,6 +12,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Label, ListItem, ListView, Static, TabbedContent, TabPane
 
+from ..model import LESSON_ABBREV
 from ..output import class_warnings, render_breakdown, render_snake, share_url
 from .render import module_colours, render_week_rich
 from .widgets import Slider
@@ -57,11 +58,28 @@ def _fmt_clock(minutes: int) -> str:
     return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
+def _render_bids(arrangement) -> Text:
+    """A 'Bids' block listing each balloted slot's interchangeable class numbers
+    (with week labels) for the selected arrangement."""
+    if not arrangement.bids:
+        return Text("")
+    lines = ["Bids (interchangeable per slot):"]
+    for bid in arrangement.bids:
+        abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
+        opts = " / ".join(
+            f"{class_no} ({label})" if label else class_no
+            for class_no, label in bid.options
+        )
+        lines.append(f"  {bid.module} {abbrev}  →  {opts}")
+    return Text("\n".join(lines), style="dim")
+
+
 class OptimiserApp(App):
     CSS = """
     #controls { width: 42; }
     #results { width: 1fr; }
-    #tt-list { height: 40%; }
+    #tt-list { height: 30%; }
+    #slot-list { height: 20%; }
     #detail { height: 1fr; }
     """
 
@@ -74,6 +92,7 @@ class OptimiserApp(App):
         ("e", "export_ballot", "export ballot"),
         ("c", "copy_link", "copy link"),
         ("b", "toggle_ballot", "ballot view"),
+        ("l", "toggle_lock", "lock slot"),
         ("[", "move_priority_up", "priority up"),
         ("]", "move_priority_down", "priority down"),
         ("q", "quit", "quit"),
@@ -124,6 +143,7 @@ class OptimiserApp(App):
                         )
             with Vertical(id="results"):
                 yield ListView(id="tt-list")
+                yield ListView(id="slot-list")
                 yield Static(id="detail")
         yield Footer()
 
@@ -135,39 +155,58 @@ class OptimiserApp(App):
     def _refresh_results(self) -> None:
         tt_list = self.query_one("#tt-list", ListView)
         tt_list.clear()
-        top = self.state.top_timetables()
-        for i, (total, _, _) in enumerate(top):
-            tt_list.append(ListItem(Label(f"#{i + 1}  {total:+.1f}")))
+        top = self.state.top_arrangements()
+        for i, arr in enumerate(top):
+            variants = f"  ({arr.variant_count} variants)" if arr.variant_count > 1 else ""
+            tt_list.append(ListItem(Label(f"#{i + 1}  {arr.score:+.1f}{variants}")))
         if self.selected >= len(top):
             self.selected = 0
         if top:
             tt_list.index = min(self.selected, len(top) - 1)
         self._refresh_detail()
 
+    def _refresh_slots(self) -> None:
+        slot_list = self.query_one("#slot-list", ListView)
+        prev = slot_list.index
+        slot_list.clear()
+        top = self.state.top_arrangements()
+        if top:
+            arr = top[self.selected]
+            for bid in arr.bids:
+                abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
+                class_no = arr.assignment[(bid.module, bid.lesson_type)].class_no
+                lock = "🔒 " if self.state.is_locked(bid.module, abbrev) else ""
+                slot_list.append(ListItem(Label(f"{lock}{bid.module} {abbrev} → {class_no}")))
+        if slot_list.children and prev is not None:
+            slot_list.index = min(prev, len(slot_list.children) - 1)
+
     def _refresh_detail(self) -> None:
+        self._refresh_slots()
         detail = self.query_one("#detail", Static)
-        top = self.state.top_timetables()
+        top = self.state.top_arrangements()
         if not top:
             detail.update("no clash-free timetables")
             return
         if self.ballot_mode:
             detail.update(render_snake(self.state.ballot_snake()))
             return
-        total, breakdown, assignment = top[self.selected]
-        warnings = class_warnings(assignment, self.state.config)
+        arr = top[self.selected]
+        warnings = class_warnings(arr.assignment, self.state.config)
         if warnings:
             warning_block = Text("\n".join(warnings), style="dim yellow")
         else:
             warning_block = Text("✓ all criteria met", style="dim green")
         detail.update(
             Group(
-                Text(render_breakdown(total, breakdown)),
+                Text(render_breakdown(arr.score, arr.breakdown)),
                 Text(""),
-                render_week_rich(assignment, self.colours),
+                render_week_rich(arr.assignment, self.colours),
                 Text(""),
                 warning_block,
                 Text(""),
-                Text(share_url(assignment, self.state.config.semester)),
+                _render_bids(arr),
+                Text(""),
+                Text(share_url(arr.assignment, self.state.config.semester)),
             )
         )
 
@@ -196,6 +235,26 @@ class OptimiserApp(App):
         self.ballot_mode = not self.ballot_mode
         self._refresh_detail()
 
+    def action_toggle_lock(self) -> None:
+        slot_list = self.query_one("#slot-list", ListView)
+        top = self.state.top_arrangements()
+        if slot_list.index is None or not top:
+            return
+        arr = top[self.selected]
+        if slot_list.index >= len(arr.bids):
+            return
+        bid = arr.bids[slot_list.index]
+        abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
+        if self.state.is_locked(bid.module, abbrev):
+            ok = self.state.clear_lock(bid.module, abbrev)
+        else:
+            class_no = arr.assignment[(bid.module, bid.lesson_type)].class_no
+            ok = self.state.set_lock(bid.module, abbrev, class_no)
+        if not ok:
+            self.notify(f"locking {bid.module} {abbrev} leaves no clash-free timetable")
+            return
+        self._refresh_results()
+
     def action_save_config(self) -> None:
         self.config_path.write_text(yaml.safe_dump(self.state.to_config_yaml(), sort_keys=False))
         self.notify(f"saved {self.config_path}")
@@ -214,11 +273,10 @@ class OptimiserApp(App):
             focusable.focus()
 
     def action_copy_link(self) -> None:
-        top = self.state.top_timetables()
+        top = self.state.top_arrangements()
         if not top:
             return
-        _, _, assignment = top[self.selected]
-        url = share_url(assignment, self.state.config.semester)
+        url = share_url(top[self.selected].assignment, self.state.config.semester)
         self.copy_to_clipboard(url)  # OSC-52 best-effort (SSH / capable terminals)
         if _os_clipboard_copy(url):
             self.notify("copied share link to clipboard")
