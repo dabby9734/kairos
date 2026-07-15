@@ -121,19 +121,18 @@ async def test_copy_link_failure_surfaces_url(state, tmp_path, monkeypatch):
 async def test_warnings_show_in_timetable_mode_only(state, tmp_path, monkeypatch):
     from rich.console import Console
 
-    monkeypatch.setattr("optimiser.tui.app.class_warnings", lambda a, c: ["⚠ SENTINEL"])
+    monkeypatch.setattr("optimiser.tui.app.class_warnings", lambda a, c, space=None: ["⚠ SENTINEL"])
     app = OptimiserApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
-        detail = app.query_one("#detail", Static)
+        warnings_text = app.query_one("#warnings-text", Static)
         console = Console()
         with console.capture() as cap:
-            # textual 8.2.8's Static has no public renderable; read the raw content it stored
-            console.print(detail._Static__content)
+            console.print(warnings_text._Static__content)
         assert "SENTINEL" in cap.get()  # timetable mode shows warnings
         await pilot.press("b")  # switch to ballot view
         with console.capture() as cap:
-            console.print(detail._Static__content)
-        assert "SENTINEL" not in cap.get()  # ballot mode omits them
+            console.print(warnings_text._Static__content)
+        assert "SENTINEL" not in cap.get()  # ballot mode empties the pane
 
 
 async def test_detail_shows_bids_block(state, tmp_path):
@@ -196,12 +195,11 @@ async def test_lock_then_unlock_restores(state, tmp_path):
 async def test_all_criteria_met_shown_when_no_warnings(state, tmp_path, monkeypatch):
     from rich.console import Console
 
-    monkeypatch.setattr("optimiser.tui.app.class_warnings", lambda a, c: [])
+    monkeypatch.setattr("optimiser.tui.app.class_warnings", lambda a, c, space=None: [])
     app = OptimiserApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
-        detail = app.query_one("#detail", Static)
+        warnings_text = app.query_one("#warnings-text", Static)
         console = Console()
         with console.capture() as cap:
-            # textual 8.2.8's Static has no public renderable; read the raw content it stored
-            console.print(detail._Static__content)
+            console.print(warnings_text._Static__content)
         assert "all criteria met" in cap.get()
