@@ -16,6 +16,12 @@ class SearchResult:
     evaluated: int = 0
 
 
+def _slot_sig(choice) -> frozenset:
+    """Slot signature ignoring class number, venue AND weeks: two choices share
+    a signature iff they occupy the same (day, start, end, online) sessions."""
+    return frozenset((s.day, s.start, s.end, s.online) for s in choice.sessions)
+
+
 def prepare_groups(groups: list, config) -> list:
     prepared = []
     for group in groups:
@@ -27,6 +33,17 @@ def prepare_groups(groups: list, config) -> list:
                 raise SystemExit(
                     f"error: {group.module} {abbrev} class {fixed_no} (config 'fixed') does not exist"
                 )
+            prepared.append(ChoiceGroup(group.module, group.lesson_type, chosen))
+            continue
+        locked_no = (config.locked.get(group.module) or {}).get(abbrev)
+        if locked_no is not None:
+            anchor = next((c for c in group.choices if c.class_no == str(locked_no)), None)
+            if anchor is None:
+                raise SystemExit(
+                    f"error: {group.module} {abbrev} class {locked_no} (config 'locked') does not exist"
+                )
+            sig = _slot_sig(anchor)
+            chosen = [c for c in group.choices if _slot_sig(c) == sig]
             prepared.append(ChoiceGroup(group.module, group.lesson_type, chosen))
             continue
         if len(group.choices) > 1 and abbrev not in config.balloted_types:
