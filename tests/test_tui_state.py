@@ -253,3 +253,53 @@ def test_retune_caps_arrangements_at_max_arrangements(config):
     state = AppState.from_parts(cfg, groups)
     # six distinct-day arrangements exist, but the cap keeps only three
     assert len(state.top_arrangements()) == 3
+
+
+def test_arr_structure_reused_on_weight_change(state):
+    from optimiser.search import rank_arrangements
+
+    before = state._arr_structure
+    state.set_weight("free_days", 9)
+    assert state._arr_structure is before  # weight move must NOT rebuild the structure
+    # arrangements still correct: match a full from-scratch rank at these weights
+    fresh = rank_arrangements(state.space, state.config, limit=state.config.max_arrangements)
+    assert [a.score for a in state.arrangements] == [a.score for a in fresh]
+
+
+def test_arr_structure_reused_on_difficulty_change(state):
+    before = state._arr_structure
+    state.set_difficulty("ALPHA", "TUT", 5)
+    # difficulty dirties raw (retune rebuilds _raw_cache) but NOT the slot structure
+    assert state._arr_structure is before
+
+
+def test_arr_structure_rebuilt_on_successful_lock(state):
+    before = state._arr_structure
+    assert state.set_lock("ALPHA", "TUT", "02") is True
+    assert state._arr_structure is not before  # new (smaller) space -> new structure
+
+
+def test_arr_structure_restored_on_rejected_lock(config):
+    import copy
+
+    from optimiser.model import Choice, ChoiceGroup, Session
+
+    all_weeks = frozenset(range(1, 14))
+    tut = ChoiceGroup(
+        "ALPHA", "Tutorial",
+        [
+            Choice("ALPHA", "Tutorial", "T1", (Session("Monday", 540, 600, all_weeks, "COM1"),)),
+            Choice("ALPHA", "Tutorial", "T2", (Session("Tuesday", 540, 600, all_weeks, "COM1"),)),
+        ],
+    )
+    lab = ChoiceGroup(
+        "BETA", "Laboratory",
+        [Choice("BETA", "Laboratory", "L1", (Session("Monday", 540, 600, all_weeks, "COM1"),))],
+    )
+    cfg = copy.deepcopy(config)
+    cfg.fixed, cfg.locked = {}, {}
+    cfg.modules = {"ALPHA": {"TUT": 3}, "BETA": {"LAB": 3}}
+    state = AppState.from_parts(cfg, [tut, lab])
+    before = state._arr_structure
+    assert state.set_lock("ALPHA", "TUT", "T1") is False  # empties the space -> rejected
+    assert state._arr_structure is before  # rejected lock restored the prior structure
