@@ -115,6 +115,69 @@ def test_to_config_yaml_roundtrips(tmp_path, state):
     assert reloaded.max_arrangements == state.config.max_arrangements
 
 
+def test_set_lock_shrinks_and_keeps_twins(state):
+    before = len(state.space.combos)
+    assert state.set_lock("ALPHA", "TUT", "02") is True
+    assert state.is_locked("ALPHA", "TUT")
+    assert len(state.space.combos) < before
+    # locking the slot keeps its interchangeable twins (02/03) in the ballot
+    opts = state.ballot_options()[("ALPHA", "Tutorial")]
+    assert {"02", "03"} <= {o.class_no for o in opts}
+
+
+def test_clear_lock_restores(state):
+    before = len(state.space.combos)
+    state.set_lock("ALPHA", "TUT", "02")
+    assert state.clear_lock("ALPHA", "TUT") is True
+    assert not state.is_locked("ALPHA", "TUT")
+    assert len(state.space.combos) == before
+
+
+def test_set_lock_empty_guard_leaves_state_unchanged(config):
+    import copy
+
+    from optimiser.model import Choice, ChoiceGroup, Session
+
+    all_weeks = frozenset(range(1, 14))
+    tut = ChoiceGroup(
+        "ALPHA", "Tutorial",
+        [
+            Choice("ALPHA", "Tutorial", "T1", (Session("Monday", 540, 600, all_weeks, "COM1"),)),
+            Choice("ALPHA", "Tutorial", "T2", (Session("Tuesday", 540, 600, all_weeks, "COM1"),)),
+        ],
+    )
+    lab = ChoiceGroup(
+        "BETA", "Laboratory",
+        [Choice("BETA", "Laboratory", "L1", (Session("Monday", 540, 600, all_weeks, "COM1"),))],
+    )
+    cfg = copy.deepcopy(config)
+    cfg.fixed, cfg.locked = {}, {}
+    cfg.modules = {"ALPHA": {"TUT": 3}, "BETA": {"LAB": 3}}
+    state = AppState.from_parts(cfg, [tut, lab])
+    before = len(state.space.combos)  # only (T2, L1) is clash-free -> 1
+    # locking ALPHA TUT to the Monday slot clashes the only lab -> empty
+    assert state.set_lock("ALPHA", "TUT", "T1") is False
+    assert not state.is_locked("ALPHA", "TUT")
+    assert len(state.space.combos) == before  # rolled back
+
+
+def test_locked_roundtrips_through_config(tmp_path, state):
+    import yaml
+
+    from optimiser.config import load_config
+    from optimiser.search import prepare_groups
+
+    state.set_lock("ALPHA", "TUT", "02")
+    data = state.to_config_yaml()
+    assert data["locked"] == {"ALPHA": {"TUT": "02"}}
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(data))
+    reloaded = load_config(path)
+    prepared = prepare_groups(state.base_groups, reloaded)
+    tut = next(g for g in prepared if g.key == ("ALPHA", "Tutorial"))
+    assert sorted(c.class_no for c in tut.choices) == ["02", "03"]
+
+
 def test_retune_caps_arrangements_at_max_arrangements(config):
     # retune must materialize at most config.max_arrangements distinct arrangements.
     from optimiser.model import Choice, ChoiceGroup, Session

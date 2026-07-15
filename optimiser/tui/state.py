@@ -47,19 +47,29 @@ def normalize_difficulties(config, groups) -> None:
 @dataclass
 class AppState:
     config: object
-    groups: list
+    groups: list                       # prepared (post prepare_groups) groups
     space: EnumeratedSpace
     result: object = None
     arrangements: list = None
+    base_groups: list = None           # raw groups, for re-locking rebuilds
 
     @classmethod
     def from_parts(cls, config, groups) -> "AppState":
-        prepared = prepare_groups(groups, config)
-        normalize_difficulties(config, prepared)
-        space = enumerate_clashfree(prepared)
-        state = cls(config=config, groups=prepared, space=space)
-        state.retune()
+        state = cls(
+            config=config,
+            groups=[],
+            space=EnumeratedSpace((), {}),
+            base_groups=list(groups),
+        )
+        state._rebuild()
         return state
+
+    def _rebuild(self):
+        prepared = prepare_groups(self.base_groups, self.config)
+        normalize_difficulties(self.config, prepared)
+        self.groups = prepared
+        self.space = enumerate_clashfree(prepared)
+        return self.retune()
 
     def retune(self):
         # Score every combo once, then share it with both consumers (M5). The
@@ -91,6 +101,43 @@ class AppState:
             raise ValueError(f"unknown preference {name}")
         setattr(self.config.preferences, name, value)
         return self.retune()
+
+    def is_locked(self, module: str, abbrev: str) -> bool:
+        return abbrev in (self.config.locked.get(module) or {})
+
+    def _apply_locked_change(self, mutate) -> bool:
+        """Mutate config.locked, rebuild the space, and commit only if the
+        result is non-empty; otherwise roll everything back and return False."""
+        snapshot = (
+            {m: dict(v) for m, v in self.config.locked.items()},
+            self.groups, self.space, self.result, self.arrangements,
+        )
+        mutate()
+        prepared = prepare_groups(self.base_groups, self.config)
+        normalize_difficulties(self.config, prepared)
+        space = enumerate_clashfree(prepared)
+        if not space.combos:
+            (self.config.locked, self.groups, self.space,
+             self.result, self.arrangements) = snapshot
+            return False
+        self.groups = prepared
+        self.space = space
+        self.retune()
+        return True
+
+    def set_lock(self, module: str, abbrev: str, class_no: str) -> bool:
+        def mutate():
+            self.config.locked.setdefault(module, {})[abbrev] = str(class_no)
+        return self._apply_locked_change(mutate)
+
+    def clear_lock(self, module: str, abbrev: str) -> bool:
+        def mutate():
+            slots = self.config.locked.get(module)
+            if slots:
+                slots.pop(abbrev, None)
+                if not slots:
+                    self.config.locked.pop(module, None)
+        return self._apply_locked_change(mutate)
 
     def move_priority(self, module: str, delta: int) -> None:
         order = self.config.priority
@@ -124,6 +171,7 @@ class AppState:
                 for code, spec in self.config.modules.items()
             },
             "fixed": self.config.fixed,
+            "locked": self.config.locked,
             "priority": list(self.config.priority),
             "preferences": {
                 "earliest_start": _fmt_clock(prefs.earliest_start),
