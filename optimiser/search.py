@@ -5,7 +5,7 @@ import itertools
 from dataclasses import dataclass
 
 from .model import LESSON_ABBREV, ChoiceGroup, week_label
-from .scoring import compute_raw, score_assignment, weight_raw
+from .scoring import compute_raw, weight_raw
 
 
 @dataclass
