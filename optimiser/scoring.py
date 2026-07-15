@@ -56,7 +56,7 @@ def tough_day_peaks(choices, config) -> dict:
     return peaks
 
 
-def score_assignment(choices, config):
+def compute_raw(choices, config) -> dict:
     prefs = config.preferences
     campus = [s for c in choices for s in c.sessions if not s.online]
     by_day: dict = {}
@@ -116,6 +116,15 @@ def score_assignment(choices, config):
     raw["gaps"] = -gap_minutes / 60
     raw["lunch"] = -lunchless
 
-    breakdown = {name: (value, prefs.weights[name] * value) for name, value in raw.items()}
+    return raw
+
+
+def weight_raw(raw, config):
+    weights = config.preferences.weights
+    breakdown = {name: (value, weights[name] * value) for name, value in raw.items()}
     total = sum(weighted for _, weighted in breakdown.values())
     return total, breakdown
+
+
+def score_assignment(choices, config):
+    return weight_raw(compute_raw(choices, config), config)
