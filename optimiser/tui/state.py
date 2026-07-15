@@ -105,7 +105,8 @@ class AppState:
     def reweight(self):
         # Cheap path: reuse the cached raw entries, apply the current weights, and
         # re-rank. Valid only because raw is weight-independent — used by weight
-        # sliders alone.
+        # sliders alone. Precondition: retune() has run at least once to populate
+        # _raw_cache (from_parts guarantees this before any slider can fire).
         return self._rank_from(weight_scored(self._raw_cache, self.config))
 
     def is_empty(self) -> bool:

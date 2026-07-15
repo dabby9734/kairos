@@ -11,11 +11,23 @@ move, and the dominant cost is the per-combo scoring itself.
 The key structural fact (`scoring.py:119-120`): each combo's six `raw` criteria
 are computed first and are **fully weight-independent** — the preference
 `weights` only multiply in at the very end. So once `raw` is cached per combo, a
-**weight-slider** move (the most common interaction) becomes a re-weighted sum
-over the cached values — no re-scoring — collapsing ~3.3 s to well under 100 ms.
+**weight-slider** move (the most common interaction) skips re-scoring: the
+re-weight itself is ~90 ms over ~60k combos.
 
-This is the complementary lever to the just-shipped lock-slots feature: locking
-shrinks the *combo count*; caching makes each retune *cheap*.
+> **Measured outcome (real config, 59,748 combos):** this cache removes the
+> ~1.46 s `score_raw`/`compute_raw` pass on weight moves, taking a retune from
+> ~3.37 s to ~1.80 s — a **~2× speedup**, not the sub-100 ms an earlier estimate
+> claimed. That estimate was wrong: it modelled only the scoring pass and ignored
+> `rank_arrangements`, which `reweight()` still runs in full (~1.35 s) and which
+> now dominates. `rank_arrangements`'s cost is its per-combo `_arrangement_key`
+> grouping + Cartesian soundness check — and that structure is **also
+> weight-independent**, so caching it is the clear next lever (separate
+> follow-up) that unlocks the rest of the win. This feature is a correct,
+> foundational first step (it introduces the `reweight` path the ranking cache
+> will build on), not the whole optimisation.
+
+This is a complementary lever to the shipped lock-slots feature: locking shrinks
+the *combo count*; caching makes the scoring half of each retune *free*.
 
 ## Scope (chosen: weight-reweight only)
 
@@ -122,6 +134,12 @@ that can change those goes through `retune()`; only `set_weight` uses `reweight(
 - **Per-component partial invalidation** for difficulty/time sliders (recompute
   only the dirtied `raw` components). Deferred; revisit only if those sliders'
   full rescore becomes a felt problem.
+- **Ranking-structure cache** (the follow-up this feature enables): cache
+  `rank_arrangements`'s weight-independent grouping (`_arrangement_key` clusters +
+  the Cartesian soundness result) so a `reweight()` only re-scores group
+  representatives and re-selects the top-`limit`, instead of re-grouping all ~60k
+  combos (~1.35 s today). This is the lever that takes the weight-move retune from
+  ~1.8 s toward the original sub-100 ms goal. Deserves its own spec.
 - **numpy vectorisation** of the reweight/ranking. Rejected: the pure-Python
-  reweight is already sub-100 ms; numpy would add a dependency for an
-  imperceptible gain unless the combo count grows 10-100×.
+  reweight is already ~90 ms; numpy would add a dependency for an imperceptible
+  gain on that step unless the combo count grows 10-100×.
