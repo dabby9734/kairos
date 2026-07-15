@@ -159,11 +159,15 @@ def test_preview_bar_is_blink_styled_and_shows_both():
     mon = _day_row(text, "Mon")
     assert "CS2030S" in mon                       # current strip still shown (show-both)
     assert "0900-1000 CS2030S TUT (preview)" in text  # candidate agenda'd on Tuesday
-    # ANSI: the preview bar carries the blink escape (\x1b[5m)
+    # ANSI: the preview bar carries the blink escape (\x1b[5m), combined with the
+    # module's own colour SGR (additive style: fg on bg + blink), so a future
+    # colour-stripping regression is caught alongside the blink check.
     console = Console(width=200, force_terminal=True, color_system="standard")
     with console.capture() as cap:
         console.print(render_week_rich(assignment, colours, preview=("CS2030S", "Tutorial", sig)))
-    assert "\x1b[5m" in cap.get() or ";5m" in cap.get()
+    ansi = cap.get()
+    assert "\x1b[5m" in ansi or ";5m" in ansi or "\x1b[5;" in ansi  # blink SGR (alone or combined)
+    assert "30;42m" in ansi  # CS2030S keeps its colour (black on green) under the blink
 
 
 def test_preview_none_unchanged():

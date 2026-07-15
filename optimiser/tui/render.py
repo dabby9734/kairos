@@ -107,11 +107,8 @@ def render_week_rich(assignment: dict, colours: dict, preview=None) -> Group:
                 mark = "~" if online else ""
                 full = f"{mark}{module} [{abbrev}]"
                 label = (full if len(full) <= width else f"{mark}{module}")[:width].ljust(width)
-                if blink:
-                    style = "blink"
-                else:
-                    bg, fg = colours.get(module, ("white", "black"))
-                    style = f"{fg} on {bg}" + (" dim" if online else "")
+                bg, fg = colours.get(module, ("white", "black"))
+                style = f"{fg} on {bg}" + (" dim" if online else "") + (" blink" if blink else "")
                 row.append(label, style=style)
                 cursor = span_end
             rows.append(row)
