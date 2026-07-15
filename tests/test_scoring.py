@@ -91,6 +91,36 @@ def test_total_is_weighted_sum(config):
     assert breakdown["free_days"][1] == pytest.approx(4 * config.preferences.weights["free_days"])
 
 
+def test_compute_raw_is_weight_independent(config):
+    import copy
+
+    from optimiser.scoring import compute_raw
+
+    cs = [choice("ALPHA", "Tutorial", "01", sess("Monday", 540, 660))]
+    other = copy.deepcopy(config)
+    other.preferences.weights = {k: v + 5 for k, v in config.preferences.weights.items()}
+    # raw depends only on the timetable, never on the weights
+    assert compute_raw(cs, config) == compute_raw(cs, other)
+
+
+def test_weight_raw_applies_weights(config):
+    from optimiser.scoring import weight_raw
+
+    raw = {name: 0.0 for name in config.preferences.weights}
+    raw["free_days"] = 3.0
+    total, breakdown = weight_raw(raw, config)
+    w = config.preferences.weights["free_days"]
+    assert breakdown["free_days"] == (3.0, 3.0 * w)
+    assert total == pytest.approx(3.0 * w)
+
+
+def test_score_assignment_equals_split(config):
+    from optimiser.scoring import compute_raw, weight_raw
+
+    cs = [choice("ALPHA", "Tutorial", "01", sess("Monday", 540, 660))]
+    assert score_assignment(cs, config) == weight_raw(compute_raw(cs, config), config)
+
+
 def test_tough_day_peaks_reports_peak_week(config):
     from optimiser.scoring import tough_day_peaks
 

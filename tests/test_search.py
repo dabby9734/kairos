@@ -276,3 +276,32 @@ def test_rank_arrangements_materializing_winners_matches_slice(config):
     assert sig(capped) == sig(everything[:3])              # same arrangements, same order
     # limit >= population returns everything unchanged
     assert sig(rank_arrangements(space, config, limit=50)) == sig(everything)
+
+
+def test_weight_scored_matches_score_combos(groups, config):
+    from optimiser.search import (
+        _score_combos,
+        enumerate_clashfree,
+        score_raw,
+        weight_scored,
+    )
+
+    space = enumerate_clashfree(groups)
+    one_shot = _score_combos(space, config)
+    split = weight_scored(score_raw(space, config), config)
+    # identical totals, breakdowns, assignments, combos in the same order
+    assert [s[0] for s in split] == [s[0] for s in one_shot]
+    assert [s[1] for s in split] == [s[1] for s in one_shot]
+    assert [s[3] for s in split] == [s[3] for s in one_shot]
+
+
+def test_score_raw_returns_weight_independent_entries(groups, config):
+    import copy
+
+    from optimiser.search import enumerate_clashfree, score_raw
+
+    space = enumerate_clashfree(groups)
+    other = copy.deepcopy(config)
+    other.preferences.weights = {k: v + 3 for k, v in config.preferences.weights.items()}
+    # raw entries do not depend on weights; only the combo layout matters
+    assert [e[0] for e in score_raw(space, config)] == [e[0] for e in score_raw(space, other)]

@@ -5,7 +5,7 @@ import itertools
 from dataclasses import dataclass
 
 from .model import LESSON_ABBREV, ChoiceGroup, week_label
-from .scoring import score_assignment
+from .scoring import compute_raw, weight_raw
 
 
 @dataclass
@@ -106,16 +106,32 @@ def enumerate_clashfree(groups: list) -> EnumeratedSpace:
     return EnumeratedSpace(tuple(combos), members_out)
 
 
+def score_raw(space: EnumeratedSpace, config) -> list:
+    """The expensive, weight-INDEPENDENT scoring pass: compute each combo's raw
+    criteria once. Cache this; a weight change only needs weight_scored (below)."""
+    entries = []
+    for combo in space.combos:
+        raw = compute_raw(list(combo), config)
+        assignment = {(c.module, c.lesson_type): c for c in combo}
+        entries.append((raw, assignment, combo))
+    return entries
+
+
+def weight_scored(raw_entries: list, config) -> list:
+    """The cheap pass: apply the current weights to cached raw entries, producing
+    the same [(total, breakdown, assignment, combo), ...] shape _score_combos does."""
+    scored = []
+    for raw, assignment, combo in raw_entries:
+        total, breakdown = weight_raw(raw, config)
+        scored.append((total, breakdown, assignment, combo))
+    return scored
+
+
 def _score_combos(space: EnumeratedSpace, config) -> list:
     """Score every clash-free combo exactly once. Returns
     [(total, breakdown, assignment, combo), ...] so callers (rank,
     rank_arrangements, state.retune) can share a single scoring pass (M5)."""
-    scored = []
-    for combo in space.combos:
-        total, breakdown = score_assignment(list(combo), config)
-        assignment = {(c.module, c.lesson_type): c for c in combo}
-        scored.append((total, breakdown, assignment, combo))
-    return scored
+    return weight_scored(score_raw(space, config), config)
 
 
 def rank(space: EnumeratedSpace, config, scored=None) -> SearchResult:

@@ -6,12 +6,13 @@ from .. import ballot
 from ..model import LESSON_ABBREV
 from ..search import (
     EnumeratedSpace,
-    _score_combos,
     enumerate_clashfree,
     find_irreconcilable,
     prepare_groups,
     rank,
     rank_arrangements,
+    score_raw,
+    weight_scored,
 )
 
 _PREF_FIELDS = {
@@ -52,6 +53,7 @@ class AppState:
     result: object = None
     arrangements: list = None
     base_groups: list = None           # raw groups, for re-locking rebuilds
+    _raw_cache: list = None            # cached score_raw(space); reused by reweight()
 
     @classmethod
     def from_parts(cls, config, groups) -> "AppState":
@@ -82,16 +84,30 @@ class AppState:
         self.groups, self.space = self._prepare_space()
         return self.retune()
 
-    def retune(self):
-        # Score every combo once, then share it with both consumers (M5). The
-        # arrangement list is capped at config.max_arrangements (keeps the TUI
-        # ListView bounded); top_n only sizes result.top (the raw timetable list).
-        scored = _score_combos(self.space, self.config)
+    def _rank_from(self, scored):
+        # Shared ranking tail: build result.top and the capped arrangement list
+        # from an already-scored list. arrangements is capped at
+        # config.max_arrangements (keeps the TUI ListView bounded); top_n only
+        # sizes result.top (the raw timetable list).
         self.result = rank(self.space, self.config, scored=scored)
         self.arrangements = rank_arrangements(
             self.space, self.config, limit=self.config.max_arrangements, scored=scored
         )
         return self.result
+
+    def retune(self):
+        # Full path: rebuild the weight-independent raw cache, then rank. Used
+        # whenever raw or the combo set may have changed (difficulty, time prefs,
+        # locking, initial build).
+        self._raw_cache = score_raw(self.space, self.config)
+        return self._rank_from(weight_scored(self._raw_cache, self.config))
+
+    def reweight(self):
+        # Cheap path: reuse the cached raw entries, apply the current weights, and
+        # re-rank. Valid only because raw is weight-independent — used by weight
+        # sliders alone. Precondition: retune() has run at least once to populate
+        # _raw_cache (from_parts guarantees this before any slider can fire).
+        return self._rank_from(weight_scored(self._raw_cache, self.config))
 
     def is_empty(self) -> bool:
         return not self.space.combos
@@ -101,7 +117,7 @@ class AppState:
 
     def set_weight(self, name: str, value):
         self.config.preferences.weights[name] = value
-        return self.retune()
+        return self.reweight()
 
     def set_difficulty(self, module: str, abbrev: str, value: int):
         self.config.modules[module][abbrev] = value
@@ -121,13 +137,13 @@ class AppState:
         result is non-empty; otherwise roll everything back and return False."""
         snapshot = (
             {m: dict(v) for m, v in self.config.locked.items()},
-            self.groups, self.space, self.result, self.arrangements,
+            self.groups, self.space, self.result, self.arrangements, self._raw_cache,
         )
         mutate()
         prepared, space = self._prepare_space()
         if not space.combos:
             (self.config.locked, self.groups, self.space,
-             self.result, self.arrangements) = snapshot
+             self.result, self.arrangements, self._raw_cache) = snapshot
             return False
         self.groups = prepared
         self.space = space

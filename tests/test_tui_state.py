@@ -178,6 +178,64 @@ def test_locked_roundtrips_through_config(tmp_path, state):
     assert sorted(c.class_no for c in tut.choices) == ["02", "03"]
 
 
+def test_reweight_equivalent_to_full_retune(state):
+    # A weight change via reweight() must match a full rescore at the same weights.
+    state.config.preferences.weights["free_days"] = 9
+    state.reweight()
+    reweighted = [t for t, _, _ in state.top_timetables()]
+    state.retune()  # full rescore at the same weights
+    full = [t for t, _, _ in state.top_timetables()]
+    assert reweighted == full
+
+
+def test_set_weight_does_not_recompute_raw(state, monkeypatch):
+    # The whole point of the cache: a weight slider must NOT re-run compute_raw.
+    import optimiser.search as search
+
+    calls = {"n": 0}
+    real = search.compute_raw
+    monkeypatch.setattr(search, "compute_raw", lambda *a, **k: calls.__setitem__("n", calls["n"] + 1) or real(*a, **k))
+    state.set_weight("free_days", 7)
+    assert calls["n"] == 0  # served entirely from _raw_cache
+
+
+def test_set_difficulty_rebuilds_raw_cache(state, monkeypatch):
+    # A difficulty change dirties raw, so it MUST rebuild the cache (compute_raw runs).
+    import optimiser.search as search
+
+    calls = {"n": 0}
+    real = search.compute_raw
+    monkeypatch.setattr(search, "compute_raw", lambda *a, **k: calls.__setitem__("n", calls["n"] + 1) or real(*a, **k))
+    state.set_difficulty("ALPHA", "TUT", 5)
+    assert calls["n"] > 0
+
+
+def test_lock_guard_restores_raw_cache(config):
+    import copy
+
+    from optimiser.model import Choice, ChoiceGroup, Session
+
+    all_weeks = frozenset(range(1, 14))
+    tut = ChoiceGroup(
+        "ALPHA", "Tutorial",
+        [
+            Choice("ALPHA", "Tutorial", "T1", (Session("Monday", 540, 600, all_weeks, "COM1"),)),
+            Choice("ALPHA", "Tutorial", "T2", (Session("Tuesday", 540, 600, all_weeks, "COM1"),)),
+        ],
+    )
+    lab = ChoiceGroup(
+        "BETA", "Laboratory",
+        [Choice("BETA", "Laboratory", "L1", (Session("Monday", 540, 600, all_weeks, "COM1"),))],
+    )
+    cfg = copy.deepcopy(config)
+    cfg.fixed, cfg.locked = {}, {}
+    cfg.modules = {"ALPHA": {"TUT": 3}, "BETA": {"LAB": 3}}
+    state = AppState.from_parts(cfg, [tut, lab])
+    before = state._raw_cache
+    assert state.set_lock("ALPHA", "TUT", "T1") is False  # empties the space
+    assert state._raw_cache is before  # rejected lock rolled the cache back
+
+
 def test_retune_caps_arrangements_at_max_arrangements(config):
     # retune must materialize at most config.max_arrangements distinct arrangements.
     from optimiser.model import Choice, ChoiceGroup, Session
