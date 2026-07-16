@@ -1,7 +1,7 @@
 import pytest
 
 from kairos.model import Choice, Session
-from kairos.scoring import score_assignment
+from kairos.scoring import compute_raw, score_assignment
 
 ALL_WEEKS = frozenset(range(1, 14))
 
@@ -41,6 +41,93 @@ def _members(*choices):
     for c in choices:
         members.setdefault((c.module, c.lesson_type), {}).setdefault(c.footprint, []).append(c)
     return members
+
+
+def _c(mod, lt, no, *sessions):
+    return Choice(mod, lt, no, tuple(sessions))
+
+
+def _s(day, start, end, weeks=ALL_WEEKS, venue="COM1"):
+    return Session(day, start, end, weeks, venue)
+
+
+def test_compute_raw_golden_matrix(config):
+    # Characterization gate for the fragment refactor: exact raw dicts for a
+    # battery of combos exercising every criterion and edge case. Goldens were
+    # generated from the pre-refactor implementation against the `config`
+    # fixture; a divergence here means a raw score genuinely moved.
+    cases = [
+        # (name, choices, unpairable_modules, expected)
+        (
+            "single_outside_window",
+            [_c("ALPHA", "Tutorial", "01", _s("Monday", 540, 660))],
+            frozenset(),
+            {"time_window": -1.0, "tough_days": 0, "same_day_pairing": 0,
+             "free_days": 4, "gaps": 0.0, "lunch": 0},
+        ),
+        (
+            "online_lecture_ignored_for_pairing",
+            [_c("ALPHA", "Lecture", "1", _s("Monday", 540, 600, venue="E-Learn_C")),
+             _c("ALPHA", "Tutorial", "01", _s("Monday", 840, 900))],
+            frozenset(),
+            {"time_window": 0.0, "tough_days": 0, "same_day_pairing": 0,
+             "free_days": 4, "gaps": 0.0, "lunch": 0},
+        ),
+        (
+            "tough_overlapping_weeks",
+            [_c("ALPHA", "Tutorial", "01", _s("Monday", 600, 660)),
+             _c("BETA", "Lecture", "1", _s("Monday", 660, 720)),
+             _c("BETA", "Tutorial", "01", _s("Monday", 720, 780))],
+            frozenset(),
+            {"time_window": 0.0, "tough_days": -2, "same_day_pairing": 1,
+             "free_days": 4, "gaps": 0.0, "lunch": 0},
+        ),
+        (
+            "tough_disjoint_weeks",
+            [_c("ALPHA", "Tutorial", "01", _s("Monday", 600, 660, weeks=frozenset({1, 2, 3}))),
+             _c("BETA", "Lecture", "1", _s("Monday", 660, 720, weeks=frozenset({4, 5, 6}))),
+             _c("BETA", "Tutorial", "01", _s("Monday", 720, 780, weeks=frozenset({7, 8})))],
+            frozenset(),
+            {"time_window": 0.0, "tough_days": 0, "same_day_pairing": 1,
+             "free_days": 4, "gaps": 0.0, "lunch": 0},
+        ),
+        (
+            "gap_and_lunchless",
+            [_c("ALPHA", "Lecture", "1", _s("Monday", 600, 780)),
+             _c("ALPHA", "Tutorial", "01", _s("Monday", 810, 900))],
+            frozenset(),
+            {"time_window": 0.0, "tough_days": 0, "same_day_pairing": 1,
+             "free_days": 4, "gaps": -0.5, "lunch": -2},
+        ),
+        (
+            "free_weekdays",
+            [_c("ALPHA", "Tutorial", "01", _s("Monday", 600, 660)),
+             _c("BETA", "Tutorial", "01", _s("Tuesday", 600, 660))],
+            frozenset(),
+            {"time_window": 0.0, "tough_days": 0, "same_day_pairing": 0,
+             "free_days": 3, "gaps": 0.0, "lunch": 0},
+        ),
+        (
+            "pairing_uses_all_sessions_incl_online",
+            [_c("ALPHA", "Lecture", "1", _s("Tuesday", 600, 660)),
+             _c("ALPHA", "Tutorial", "01", _s("Monday", 900, 960),
+                _s("Tuesday", 900, 960, venue="E-Learn_C"))],
+            frozenset(),
+            {"time_window": 0.0, "tough_days": 0, "same_day_pairing": 1,
+             "free_days": 3, "gaps": 0.0, "lunch": 0},
+        ),
+        (
+            "unpairable_modules_arg",
+            [_c("ALPHA", "Lecture", "1", _s("Monday", 600, 660)),
+             _c("ALPHA", "Tutorial", "01", _s("Tuesday", 600, 660))],
+            frozenset({"BETA"}),
+            {"time_window": 0.0, "tough_days": 0, "same_day_pairing": 1,
+             "free_days": 3, "gaps": 0.0, "lunch": 0},
+        ),
+    ]
+    for name, choices, unpair, expected in cases:
+        got = compute_raw(choices, config, unpair)
+        assert got == pytest.approx(expected), name
 
 
 def test_time_window_penalty(config):
