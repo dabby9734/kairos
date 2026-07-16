@@ -4,7 +4,7 @@ from rich.console import Group
 from rich.text import Text
 
 from ..model import LESSON_ABBREV, fmt_time
-from ..output import CELL, GRID_HOURS, WEEKDAYS
+from ..output import CELL, GRID_HOURS, _render_days
 
 # Distinct (background, foreground) pairs, assigned to modules in order.
 # Chosen for legible contrast on both light and dark terminals.
@@ -41,7 +41,11 @@ def render_week_rich(assignment: dict, colours: dict, preview=None) -> Group:
         header.append(f"{hour:02d}00".ljust(CELL))
     rows: list = [header]
 
-    for day in WEEKDAYS:
+    preview_days = None
+    if preview is not None:
+        preview_days = {p_day for p_day, _start, _end, _online in preview[2]}
+
+    for day in _render_days(assignment, extra_days=preview_days):
         # block = (start, end, start_h, end_h, module, abbrev, class_no, venue, online)
         blocks = []
         for (module, lesson_type), choice in sorted(assignment.items()):

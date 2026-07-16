@@ -52,6 +52,22 @@ def _day_row(text, day3):
     return next(line for line in text.splitlines() if line.startswith(day3))
 
 
+def test_saturday_class_gets_grid_row_and_agenda():
+    assignment = {("AAA", "Lecture"): _choice("AAA", "Lecture", "1", "Saturday", 600, 720)}
+    text = _plain(render_week_rich(assignment, module_colours(["AAA"])))
+    assert "AAA" in _day_row(text, "Sat")
+    assert "1000-1200 AAA LEC[1]" in text
+
+
+def test_saturday_preview_creates_saturday_row():
+    assignment = {("BBB", "Tutorial"): _choice("BBB", "Tutorial", "01", "Monday", 840, 900)}
+    sig = frozenset({("Saturday", 600, 720, False)})
+    colours = module_colours(["AAA", "BBB"])
+    text = _plain(render_week_rich(assignment, colours, preview=("AAA", "Lecture", sig)))
+    assert any(line.startswith("Sat") for line in text.splitlines())
+    assert "1000-1200 AAA LEC (preview)" in text
+
+
 def test_back_to_back_halfhour_classes_do_not_drift():
     # Two clash-free, non-hour-aligned back-to-back classes plus a third.
     # Rounded hour spans overlap; the row must still not overflow the grid

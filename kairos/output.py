@@ -8,6 +8,16 @@ GRID_HOURS = range(8, 21)
 CELL = 8
 
 
+def _render_days(assignment: dict, extra_days: set | None = None) -> list:
+    """Days to draw in a week grid: always Mon-Fri, plus any later day in DAYS
+    (i.e. Saturday) that actually has a session in this assignment (or in
+    extra_days, e.g. a TUI preview)."""
+    present = {s.day for choice in assignment.values() for s in choice.sessions}
+    if extra_days:
+        present = present | set(extra_days)
+    return WEEKDAYS + [d for d in DAYS[5:] if d in present]
+
+
 def share_url(assignment: dict, semester: int) -> str:
     by_module: dict = {}
     for (module, lesson_type), choice in assignment.items():
@@ -20,7 +30,7 @@ def share_url(assignment: dict, semester: int) -> str:
 
 def render_week(assignment: dict) -> str:
     lines = ["     " + "".join(f"{hour:02d}00".ljust(CELL) for hour in GRID_HOURS)]
-    for day in WEEKDAYS:
+    for day in _render_days(assignment):
         cells = {hour: " " * CELL for hour in GRID_HOURS}
         agenda = []
         for (module, lesson_type), choice in sorted(assignment.items()):

@@ -29,6 +29,21 @@ def test_render_week_contains_sessions_and_online_mark():
     assert "Mon" in text and "Fri" in text
 
 
+def test_render_week_shows_saturday_when_present():
+    mon = Choice("ALPHA", "Lecture", "1", (Session("Monday", 540, 600, ALL_WEEKS, "COM1"),))
+    sat = Choice("GAMMA", "Lecture", "1", (Session("Saturday", 600, 720, ALL_WEEKS, "COM1"),))
+    text = render_week({("ALPHA", "Lecture"): mon, ("GAMMA", "Lecture"): sat})
+    lines = text.split("\n")
+    assert any(line.startswith("Sat") for line in lines)
+    assert "1000-1200 GAMMA LEC[1] @COM1" in text
+
+
+def test_render_week_omits_saturday_when_absent():
+    text = render_week(make_assignment())
+    lines = text.split("\n")
+    assert not any(line.startswith("Sat") for line in lines)
+
+
 def test_render_breakdown():
     text = render_breakdown(3.5, {"gaps": (-2.0, -2.0), "free_days": (2, 8.0)})
     assert "score: +3.50" in text
