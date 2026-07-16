@@ -1,8 +1,8 @@
 import pytest
 
-from optimiser.ballot import BallotOption, ranked_options, snake
-from optimiser.model import Session
-from optimiser.search import SearchResult
+from kairos.ballot import BallotOption, ranked_options, snake
+from kairos.model import Session
+from kairos.search import SearchResult
 
 ALL_WEEKS = frozenset(range(1, 14))
 
@@ -18,7 +18,7 @@ def opt(module, ltype, class_no, letter):
 def fake_result(config):
     """ALPHA Tutorial: fp1 {01,02} score 10, fp2 {03} score 8, fp3 {04} never viable.
     BETA Laboratory: fpA {L1} score 9, fpB {L2} score 7."""
-    from optimiser.model import Choice
+    from kairos.model import Choice
 
     def ch(module, ltype, no, day):
         return Choice(module, ltype, no, (sess(day),))
@@ -88,8 +88,8 @@ def test_ranked_options_groups_week_twins(config):
     # REAL space: odd/even same-slot twins that are freely swappable (full Cartesian
     # with a non-clashing lecture) -> R(fp_odd) == R(fp_even), so they merge into one
     # ballot cluster and appear in each other's tied_with (Fix C, provably sound).
-    from optimiser.model import Choice, ChoiceGroup, Session
-    from optimiser.search import enumerate_clashfree, rank
+    from kairos.model import Choice, ChoiceGroup, Session
+    from kairos.search import enumerate_clashfree, rank
 
     odd = frozenset({1, 3, 5})
     even = frozenset({2, 4, 6})
@@ -112,8 +112,8 @@ def test_ranked_options_keeps_entangled_twins_separate(config):
     # ALPHA Tutorial and BETA Laboratory BOTH odd/even at the same slot: only the
     # opposite-week pairings are clash-free, so R(fp_odd) != R(fp_even) for the
     # tutorial twins -> they must NOT merge (Fix C soundness).
-    from optimiser.model import Choice, ChoiceGroup, Session
-    from optimiser.search import enumerate_clashfree, rank
+    from kairos.model import Choice, ChoiceGroup, Session
+    from kairos.search import enumerate_clashfree, rank
 
     odd = frozenset({1, 3, 5})
     even = frozenset({2, 4, 6})
@@ -135,8 +135,8 @@ def test_ranked_options_groups_venue_twins(config):
     # Same footprint, two class numbers (different venue) -> one member bucket, so
     # both class numbers land in one ballot cluster with each other in tied_with
     # (ballot side of I1 / Fix B).
-    from optimiser.model import Choice, ChoiceGroup, Session
-    from optimiser.search import enumerate_clashfree, rank
+    from kairos.model import Choice, ChoiceGroup, Session
+    from kairos.search import enumerate_clashfree, rank
 
     lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
     t_a = Choice("ALPHA", "Tutorial", "01", (Session("Tuesday", 540, 600, ALL_WEEKS, "COM1"),))

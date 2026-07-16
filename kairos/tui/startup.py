@@ -54,6 +54,6 @@ def build_state(share_url, config_path: Path, cache_dir: Path, acad_year=None) -
         config, groups = _config_from_file(Path(config_path), cache_dir)
     else:
         raise SystemExit(
-            "error: no config.yaml found — start from a share URL: optimiser tui <share-url>"
+            "error: no config.yaml found — start from a share URL: kairos tui <share-url>"
         )
     return AppState.from_parts(config, groups)

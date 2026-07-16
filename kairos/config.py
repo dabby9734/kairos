@@ -117,6 +117,6 @@ def config_from_dict(data, source: str = "config") -> Config:
 
 def load_config(path: Path) -> Config:
     if not path.exists():
-        raise SystemExit(f"error: {path} not found — run 'optimiser init <share-url>' first")
+        raise SystemExit(f"error: {path} not found — run 'kairos init <share-url>' first")
     data = yaml.safe_load(path.read_text())
     return config_from_dict(data, str(path))

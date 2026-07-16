@@ -54,7 +54,7 @@ def beta_json():
 
 @pytest.fixture
 def config():
-    from optimiser.config import DEFAULT_PREFERENCES, Config, Preferences
+    from kairos.config import DEFAULT_PREFERENCES, Config, Preferences
 
     return Config(
         acad_year="2026-2027",

@@ -1,4 +1,4 @@
-from optimiser.model import (
+from kairos.model import (
     LESSON_ABBREV,
     LESSON_FULL,
     Choice,
@@ -70,7 +70,7 @@ def test_footprint_distinguishes_online():
 
 
 def test_week_label():
-    from optimiser.model import week_label
+    from kairos.model import week_label
 
     assert week_label(frozenset(range(1, 14))) == ""          # full run -> no label
     assert week_label(frozenset({2, 4, 6, 8, 10, 12})) == "even wks"

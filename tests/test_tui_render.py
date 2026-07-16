@@ -1,7 +1,7 @@
 from rich.console import Console
 
-from optimiser.model import Choice, Session
-from optimiser.tui.render import module_colours, render_week_rich
+from kairos.model import Choice, Session
+from kairos.tui.render import module_colours, render_week_rich
 
 ALL_WEEKS = frozenset(range(1, 14))
 

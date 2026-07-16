@@ -14,7 +14,7 @@ from .model import LESSON_ABBREV
 from .tui.app import run_app
 
 # NOTE: `build_state` is imported lazily inside cmd_tui (not at module level)
-# because optimiser.tui.startup imports guess_acad_year/parse_share_url from
+# because kairos.tui.startup imports guess_acad_year/parse_share_url from
 # this module — a top-level `from .tui.startup import build_state` here would
 # create a circular import (this module isn't finished initializing yet).
 
@@ -110,7 +110,7 @@ def cmd_init(args) -> None:
         "max_arrangements": 50,
     }
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
-    print(f"wrote {config_path} — tweak preferences there, then: optimiser run")
+    print(f"wrote {config_path} — tweak preferences there, then: kairos run")
 
 
 def cmd_run(args) -> None:
@@ -177,7 +177,7 @@ def _add_common_flags(subparser, dest_prefix: str) -> None:
     # namespace and unconditionally copies every attribute back onto the
     # parent namespace — so a subparser argument sharing a dest with a
     # parent-parser argument would silently clobber a value set *before*
-    # the subcommand (e.g. `optimiser --config X run` would lose "X" to
+    # the subcommand (e.g. `kairos --config X run` would lose "X" to
     # the subparser's own default). Using distinct dests here and
     # resolving "subcommand value wins if given, else the global one" in
     # main() sidesteps that.
@@ -190,7 +190,7 @@ def _add_common_flags(subparser, dest_prefix: str) -> None:
 
 
 def main(argv: list | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="optimiser", description="NUS timetable optimiser")
+    parser = argparse.ArgumentParser(prog="kairos", description="Kairos — NUS timetable optimiser")
     parser.add_argument("--config", default="config.yaml", help="path to config.yaml")
     parser.add_argument("--cache-dir", default="data/cache", help="API cache directory")
     subparsers = parser.add_subparsers(dest="command", required=True)

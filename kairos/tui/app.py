@@ -81,7 +81,7 @@ def _fmt_sessions(sessions) -> str:
     )
 
 
-class OptimiserApp(App):
+class KairosApp(App):
     CSS = """
     #controls { width: 42; }
     #results { width: 1fr; }
@@ -384,4 +384,4 @@ class OptimiserApp(App):
 
 
 def run_app(state, config_path: Path) -> None:
-    OptimiserApp(state, config_path).run()
+    KairosApp(state, config_path).run()

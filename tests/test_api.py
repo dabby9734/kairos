@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from optimiser.api import build_groups, fetch_module, normalise_weeks, semester_timetable
+from kairos.api import build_groups, fetch_module, normalise_weeks, semester_timetable
 
 
 def test_normalise_weeks():

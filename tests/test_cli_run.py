@@ -1,7 +1,7 @@
 import pytest
 import yaml
 
-from optimiser.cli import main
+from kairos.cli import main
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def config_file(tmp_path):
 
 def run_cli(tmp_path, config_file, monkeypatch, capsys, fixtures):
     monkeypatch.setattr(
-        "optimiser.cli.api.fetch_module", lambda ay, code, cache: fixtures[code]
+        "kairos.cli.api.fetch_module", lambda ay, code, cache: fixtures[code]
     )
     main(["--config", str(config_file), "--cache-dir", str(tmp_path / "cache"), "run"])
     return capsys.readouterr().out
@@ -51,10 +51,10 @@ def test_run_accepts_config_flag_after_subcommand(
     tmp_path, config_file, monkeypatch, capsys, alpha_json, beta_json
 ):
     # Regression: --config/--cache-dir used to live only on the parent parser,
-    # so `optimiser run --config X` (flag after the subcommand) failed even
-    # though `optimiser --config X run` (flag before) worked.
+    # so `kairos run --config X` (flag after the subcommand) failed even
+    # though `kairos --config X run` (flag before) worked.
     monkeypatch.setattr(
-        "optimiser.cli.api.fetch_module",
+        "kairos.cli.api.fetch_module",
         lambda ay, code, cache: {"ALPHA": alpha_json, "BETA": beta_json}[code],
     )
     main(["run", "--config", str(config_file), "--cache-dir", str(tmp_path / "cache")])
@@ -87,7 +87,7 @@ def test_init_then_run_roundtrip(tmp_path, monkeypatch, capsys, alpha_json, beta
         ],
     }
     fixtures = {"ALPHA": alpha_json, "BETA": beta_json, "GAMMA": gamma_json}
-    monkeypatch.setattr("optimiser.cli.api.fetch_module", lambda ay, code, cache: fixtures[code])
+    monkeypatch.setattr("kairos.cli.api.fetch_module", lambda ay, code, cache: fixtures[code])
 
     # BETA gets a LEC pick (2 lecture groups) so it's fixed; ALPHA has only 1
     # LEC group so it's never fixed regardless of the pick; GAMMA's REC/LAB
@@ -152,7 +152,7 @@ def test_run_reports_irreconcilable(tmp_path, config_file, monkeypatch, capsys):
         ]}],
     }
     monkeypatch.setattr(
-        "optimiser.cli.api.fetch_module",
+        "kairos.cli.api.fetch_module",
         lambda ay, code, cache: {"ALPHA": clash_a, "BETA": clash_b}[code],
     )
     with pytest.raises(SystemExit) as exc:

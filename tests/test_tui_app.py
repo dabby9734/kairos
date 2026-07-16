@@ -3,10 +3,10 @@ import copy
 import pytest
 from textual.widgets import ListView, Static
 
-from optimiser.api import build_groups, semester_timetable
-from optimiser.tui.app import OptimiserApp
-from optimiser.tui.state import AppState
-from optimiser.tui.widgets import Slider
+from kairos.api import build_groups, semester_timetable
+from kairos.tui.app import KairosApp
+from kairos.tui.state import AppState
+from kairos.tui.widgets import Slider
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ def state(alpha_json, beta_json, config):
 
 
 async def test_slider_adjust_reranks(state, tmp_path):
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         slider = next(s for s in app.query(Slider) if s.key == "weight:free_days")
         app.set_focus(slider)
@@ -33,7 +33,7 @@ async def test_slider_adjust_reranks(state, tmp_path):
 
 
 async def test_priority_reorder_follows_module(state, tmp_path):
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         lst = app.query_one("#priority-list", ListView)
         app.set_focus(lst)
@@ -49,7 +49,7 @@ async def test_priority_reorder_follows_module(state, tmp_path):
 
 
 async def test_toggle_ballot_view(state, tmp_path):
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         assert app.ballot_mode is False
         await pilot.press("b")
@@ -60,7 +60,7 @@ async def test_toggle_ballot_view(state, tmp_path):
 
 async def test_save_config_writes_file(state, tmp_path):
     path = tmp_path / "config.yaml"
-    app = OptimiserApp(state, path)
+    app = KairosApp(state, path)
     async with app.run_test() as pilot:
         await pilot.press("s")
     assert path.exists()  # config written
@@ -72,10 +72,10 @@ async def test_save_config_writes_file(state, tmp_path):
 async def test_copy_link_uses_os_clipboard(state, tmp_path, monkeypatch):
     captured = {}
     monkeypatch.setattr(
-        "optimiser.tui.app._os_clipboard_copy",
+        "kairos.tui.app._os_clipboard_copy",
         lambda text: captured.setdefault("url", text) or True,
     )
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         await pilot.press("c")
     assert "url" in captured
@@ -85,7 +85,7 @@ async def test_copy_link_uses_os_clipboard(state, tmp_path, monkeypatch):
 async def test_number_key_switches_tab(state, tmp_path):
     from textual.widgets import TabbedContent
 
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         await pilot.press("3")
         assert app.query_one(TabbedContent).active == "tab-times"
@@ -94,7 +94,7 @@ async def test_number_key_switches_tab(state, tmp_path):
 
 
 async def test_slider_updown_moves_focus(state, tmp_path):
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         weight_sliders = [s for s in app.query(Slider) if (s.key or "").startswith("weight:")]
         first, second = weight_sliders[0], weight_sliders[1]
@@ -110,8 +110,8 @@ async def test_slider_updown_moves_focus(state, tmp_path):
 
 async def test_copy_link_failure_surfaces_url(state, tmp_path, monkeypatch):
     notes = []
-    monkeypatch.setattr("optimiser.tui.app._os_clipboard_copy", lambda text: False)
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    monkeypatch.setattr("kairos.tui.app._os_clipboard_copy", lambda text: False)
+    app = KairosApp(state, tmp_path / "config.yaml")
     monkeypatch.setattr(app, "notify", lambda msg, **kw: notes.append(msg))
     async with app.run_test() as pilot:
         await pilot.press("c")
@@ -121,8 +121,8 @@ async def test_copy_link_failure_surfaces_url(state, tmp_path, monkeypatch):
 async def test_warnings_show_in_timetable_mode_only(state, tmp_path, monkeypatch):
     from rich.console import Console
 
-    monkeypatch.setattr("optimiser.tui.app.class_warnings", lambda a, c, space=None: ["⚠ SENTINEL"])
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    monkeypatch.setattr("kairos.tui.app.class_warnings", lambda a, c, space=None: ["⚠ SENTINEL"])
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         warnings_text = app.query_one("#warnings-text", Static)
         console = Console()
@@ -139,7 +139,7 @@ async def test_detail_shows_bids_block(state, tmp_path):
     from rich.console import Console
     from textual.widgets import Static
 
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         detail = app.query_one("#detail", Static)
         console = Console()
@@ -159,7 +159,7 @@ def _slot_labels(app):
 
 
 async def test_slot_list_lists_balloted_slots(state, tmp_path):
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         labels = _slot_labels(app)
         # ALPHA Tutorial is a balloted slot; BETA Lecture is fixed and excluded
@@ -168,7 +168,7 @@ async def test_slot_list_lists_balloted_slots(state, tmp_path):
 
 
 async def test_lock_timeslot_marks_and_reduces(state, tmp_path):
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         before = len(app.state.top_arrangements())
         slot_list = app.query_one("#slot-list", ListView)
@@ -184,7 +184,7 @@ async def test_lock_timeslot_marks_and_reduces(state, tmp_path):
 
 
 async def test_lock_then_unlock_timeslot_restores(state, tmp_path):
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         before = len(app.state.top_arrangements())
         slot_list = app.query_one("#slot-list", ListView)
@@ -203,8 +203,8 @@ async def test_lock_then_unlock_timeslot_restores(state, tmp_path):
 async def test_all_criteria_met_shown_when_no_warnings(state, tmp_path, monkeypatch):
     from rich.console import Console
 
-    monkeypatch.setattr("optimiser.tui.app.class_warnings", lambda a, c, space=None: [])
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    monkeypatch.setattr("kairos.tui.app.class_warnings", lambda a, c, space=None: [])
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         warnings_text = app.query_one("#warnings-text", Static)
         console = Console()
@@ -220,7 +220,7 @@ def _timeslot_labels(app):
 
 
 async def test_timeslots_populate_from_highlighted_class(state, tmp_path):
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         slot_list = app.query_one("#slot-list", ListView)
         app.set_focus(slot_list)
@@ -238,7 +238,7 @@ async def test_timeslots_populate_from_highlighted_class(state, tmp_path):
 async def test_browsing_timeslot_shows_blinking_preview(state, tmp_path):
     from rich.console import Console
 
-    app = OptimiserApp(state, tmp_path / "config.yaml")
+    app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         slot_list = app.query_one("#slot-list", ListView)
         app.set_focus(slot_list)

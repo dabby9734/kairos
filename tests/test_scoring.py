@@ -1,7 +1,7 @@
 import pytest
 
-from optimiser.model import Choice, Session
-from optimiser.scoring import score_assignment
+from kairos.model import Choice, Session
+from kairos.scoring import score_assignment
 
 ALL_WEEKS = frozenset(range(1, 14))
 
@@ -20,7 +20,7 @@ def raw(choices, config, name):
 
 
 def config_stub():
-    from optimiser.config import DEFAULT_PREFERENCES, Config, Preferences
+    from kairos.config import DEFAULT_PREFERENCES, Config, Preferences
 
     return Config(
         acad_year="2026-2027", semester=1,
@@ -118,7 +118,7 @@ def test_total_is_weighted_sum(config):
 def test_compute_raw_is_weight_independent(config):
     import copy
 
-    from optimiser.scoring import compute_raw
+    from kairos.scoring import compute_raw
 
     cs = [choice("ALPHA", "Tutorial", "01", sess("Monday", 540, 660))]
     other = copy.deepcopy(config)
@@ -128,7 +128,7 @@ def test_compute_raw_is_weight_independent(config):
 
 
 def test_weight_raw_applies_weights(config):
-    from optimiser.scoring import weight_raw
+    from kairos.scoring import weight_raw
 
     raw = {name: 0.0 for name in config.preferences.weights}
     raw["free_days"] = 3.0
@@ -139,14 +139,14 @@ def test_weight_raw_applies_weights(config):
 
 
 def test_score_assignment_equals_split(config):
-    from optimiser.scoring import compute_raw, weight_raw
+    from kairos.scoring import compute_raw, weight_raw
 
     cs = [choice("ALPHA", "Tutorial", "01", sess("Monday", 540, 660))]
     assert score_assignment(cs, config) == weight_raw(compute_raw(cs, config), config)
 
 
 def test_tough_day_peaks_reports_peak_week(config):
-    from optimiser.scoring import tough_day_peaks
+    from kairos.scoring import tough_day_peaks
 
     w13 = frozenset({1, 3})
     cs = [
@@ -184,7 +184,7 @@ def test_tough_days_week_aware_penalises_overlapping_weeks(config):
 
 
 def test_pairing_impossibility_flags_disjoint_module():
-    from optimiser.scoring import pairing_impossibility
+    from kairos.scoring import pairing_impossibility
 
     lec = choice("ALPHA", "Lecture", "1", sess("Monday", 600, 720))
     tut = choice("ALPHA", "Tutorial", "01", sess("Tuesday", 840, 900))  # never Monday
@@ -194,7 +194,7 @@ def test_pairing_impossibility_flags_disjoint_module():
 
 
 def test_pairing_impossibility_pairable_module_is_empty():
-    from optimiser.scoring import pairing_impossibility
+    from kairos.scoring import pairing_impossibility
 
     lec = choice("ALPHA", "Lecture", "1", sess("Monday", 600, 720))
     tut = choice("ALPHA", "Tutorial", "01", sess("Monday", 840, 900))  # shares Monday
@@ -204,7 +204,7 @@ def test_pairing_impossibility_pairable_module_is_empty():
 
 
 def test_pairing_impossibility_mixed_flags_only_impossible_slot():
-    from optimiser.scoring import pairing_impossibility
+    from kairos.scoring import pairing_impossibility
 
     lec = choice("ALPHA", "Lecture", "1", sess("Monday", 600, 720))
     tut = choice("ALPHA", "Tutorial", "01", sess("Monday", 840, 900))   # pairable
@@ -215,7 +215,7 @@ def test_pairing_impossibility_mixed_flags_only_impossible_slot():
 
 
 def test_pairing_impossibility_ignores_online_lecture():
-    from optimiser.scoring import pairing_impossibility
+    from kairos.scoring import pairing_impossibility
 
     online_lec = choice("ALPHA", "Lecture", "1", sess("Monday", 600, 720, venue="E-Learn_C"))
     tut = choice("ALPHA", "Tutorial", "01", sess("Tuesday", 840, 900))
@@ -226,7 +226,7 @@ def test_pairing_impossibility_ignores_online_lecture():
 
 
 def test_compute_raw_counts_unpairable_module_as_satisfied():
-    from optimiser.scoring import compute_raw
+    from kairos.scoring import compute_raw
 
     lec = choice("ALPHA", "Lecture", "1", sess("Monday", 600, 720))
     tut = choice("ALPHA", "Tutorial", "01", sess("Tuesday", 840, 900))  # does not pair

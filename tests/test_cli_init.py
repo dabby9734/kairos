@@ -3,7 +3,7 @@ import datetime
 import pytest
 import yaml
 
-from optimiser.cli import guess_acad_year, main, parse_share_url
+from kairos.cli import guess_acad_year, main, parse_share_url
 
 SHARE_URL = (
     "https://nusmods.com/timetable/sem-1/share?"
@@ -40,17 +40,17 @@ def test_guess_acad_year():
 def test_cmd_init_writes_config(tmp_path, monkeypatch, alpha_json, beta_json):
     fixtures = {"ALPHA": alpha_json, "BETA": beta_json}
     monkeypatch.setattr(
-        "optimiser.cli.api",
+        "kairos.cli.api",
         type(
             "FakeApi",
             (),
             {
                 "fetch_module": staticmethod(lambda ay, code, cache: fixtures[code]),
                 "semester_timetable": staticmethod(
-                    __import__("optimiser.api", fromlist=["x"]).semester_timetable
+                    __import__("kairos.api", fromlist=["x"]).semester_timetable
                 ),
                 "build_groups": staticmethod(
-                    __import__("optimiser.api", fromlist=["x"]).build_groups
+                    __import__("kairos.api", fromlist=["x"]).build_groups
                 ),
             },
         ),

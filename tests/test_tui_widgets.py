@@ -1,4 +1,4 @@
-from optimiser.tui.widgets import Slider, clamp
+from kairos.tui.widgets import Slider, clamp
 
 
 def test_clamp():

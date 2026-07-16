@@ -1,6 +1,6 @@
 import pytest
 
-from optimiser.config import load_config
+from kairos.config import load_config
 
 
 def write(tmp_path, text):
@@ -81,7 +81,7 @@ def test_load_config_missing_required_key(tmp_path):
 def test_config_from_dict_matches_load(tmp_path):
     import yaml
 
-    from optimiser.config import config_from_dict, load_config
+    from kairos.config import config_from_dict, load_config
 
     data = yaml.safe_load(BASE)
     path = tmp_path / "config.yaml"

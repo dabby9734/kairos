@@ -1,6 +1,6 @@
-# NUS Course Optimiser
+# Kairos
 
-Searches every valid combination of your modules' tutorial/lab/recitation/sectional
+An NUS course optimiser. Searches every valid combination of your modules' tutorial/lab/recitation/sectional
 slots, scores them against your preferences, and prints:
 
 1. the top-N timetables (with NUSMods share links),
@@ -17,17 +17,17 @@ slots, scores them against your preferences, and prints:
 Generate a config from your NUSMods share URL (prompts for per-component
 difficulty ratings and module priority):
 
-    .venv/bin/optimiser init "https://nusmods.com/timetable/sem-1/share?CS1231S=TUT:07A,LEC:2&..."
+    .venv/bin/kairos init "https://nusmods.com/timetable/sem-1/share?CS1231S=TUT:07A,LEC:2&..."
 
 Tweak `config.yaml` (preferences, weights, balloted types), then:
 
-    .venv/bin/optimiser run
+    .venv/bin/kairos run
 
 ## Interactive app
 
-    .venv/bin/optimiser tui "https://nusmods.com/timetable/sem-1/share?CS1231S=TUT:07A,LEC:2&..."
+    .venv/bin/kairos tui "https://nusmods.com/timetable/sem-1/share?CS1231S=TUT:07A,LEC:2&..."
     # or, to resume from a saved config:
-    .venv/bin/optimiser tui
+    .venv/bin/kairos tui
 
 A full-screen app: tabs on the left for Weights, Difficulty, Times, and Priority
 (adjust with ←/→); the timetables and their score breakdown on the right, re-ranking

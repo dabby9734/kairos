@@ -1,6 +1,6 @@
-from optimiser.ballot import BallotOption
-from optimiser.model import Choice, Session
-from optimiser.output import class_warnings, render_breakdown, render_options, render_snake, render_week, share_url
+from kairos.ballot import BallotOption
+from kairos.model import Choice, Session
+from kairos.output import class_warnings, render_breakdown, render_options, render_snake, render_week, share_url
 
 ALL_WEEKS = frozenset(range(1, 14))
 
@@ -36,7 +36,7 @@ def test_render_breakdown():
 
 
 def test_render_breakdown_includes_legend_descriptions():
-    from optimiser.scoring import COMPONENT_LEGEND
+    from kairos.scoring import COMPONENT_LEGEND
 
     text = render_breakdown(3.5, {"gaps": (-2.0, -2.0), "free_days": (2, 8.0)})
     assert COMPONENT_LEGEND["gaps"] in text
@@ -231,7 +231,7 @@ def test_class_warnings_pairing_suppressed_when_weight_zero(config):
 
 
 def test_class_warnings_pairing_suppressed_when_impossible(config):
-    from optimiser.search import EnumeratedSpace
+    from kairos.search import EnumeratedSpace
 
     all_weeks = frozenset(range(1, 14))
     lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, all_weeks, "COM1"),))
@@ -250,7 +250,7 @@ def test_class_warnings_pairing_suppressed_when_impossible(config):
 
 
 def test_class_warnings_pairing_mixed_suppresses_only_impossible(config):
-    from optimiser.search import EnumeratedSpace
+    from kairos.search import EnumeratedSpace
 
     all_weeks = frozenset(range(1, 14))
     lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, all_weeks, "COM1"),))

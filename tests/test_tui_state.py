@@ -2,8 +2,8 @@ import copy
 
 import pytest
 
-from optimiser.api import build_groups, semester_timetable
-from optimiser.tui.state import AppState, normalize_difficulties
+from kairos.api import build_groups, semester_timetable
+from kairos.tui.state import AppState, normalize_difficulties
 
 
 @pytest.fixture
@@ -69,7 +69,7 @@ def test_ballot_helpers(state):
 
 
 def test_top_arrangements_returns_arrangements(state):
-    from optimiser.search import Arrangement, SlotBid
+    from kairos.search import Arrangement, SlotBid
 
     arrs = state.top_arrangements()
     assert arrs and all(isinstance(a, Arrangement) for a in arrs)
@@ -81,7 +81,7 @@ def test_top_arrangements_returns_arrangements(state):
 
 def test_arrangements_not_capped_to_top_n(config):
     # Fix A: the arrangement list is truly unlimited, NOT truncated to top_n.
-    from optimiser.model import Choice, ChoiceGroup, Session
+    from kairos.model import Choice, ChoiceGroup, Session
 
     cfg = copy.deepcopy(config)
     cfg.top_n = 5
@@ -103,7 +103,7 @@ def test_arrangements_not_capped_to_top_n(config):
 def test_to_config_yaml_roundtrips(tmp_path, state):
     import yaml
 
-    from optimiser.config import load_config
+    from kairos.config import load_config
 
     data = state.to_config_yaml()
     path = tmp_path / "config.yaml"
@@ -136,7 +136,7 @@ def test_clear_lock_restores(state):
 def test_set_lock_empty_guard_leaves_state_unchanged(config):
     import copy
 
-    from optimiser.model import Choice, ChoiceGroup, Session
+    from kairos.model import Choice, ChoiceGroup, Session
 
     all_weeks = frozenset(range(1, 14))
     tut = ChoiceGroup(
@@ -164,8 +164,8 @@ def test_set_lock_empty_guard_leaves_state_unchanged(config):
 def test_locked_roundtrips_through_config(tmp_path, state):
     import yaml
 
-    from optimiser.config import load_config
-    from optimiser.search import prepare_groups
+    from kairos.config import load_config
+    from kairos.search import prepare_groups
 
     state.set_lock("ALPHA", "TUT", "02")
     data = state.to_config_yaml()
@@ -190,7 +190,7 @@ def test_reweight_equivalent_to_full_retune(state):
 
 def test_set_weight_does_not_recompute_raw(state, monkeypatch):
     # The whole point of the cache: a weight slider must NOT re-run compute_raw.
-    import optimiser.search as search
+    import kairos.search as search
 
     calls = {"n": 0}
     real = search.compute_raw
@@ -201,7 +201,7 @@ def test_set_weight_does_not_recompute_raw(state, monkeypatch):
 
 def test_set_difficulty_rebuilds_raw_cache(state, monkeypatch):
     # A difficulty change dirties raw, so it MUST rebuild the cache (compute_raw runs).
-    import optimiser.search as search
+    import kairos.search as search
 
     calls = {"n": 0}
     real = search.compute_raw
@@ -213,7 +213,7 @@ def test_set_difficulty_rebuilds_raw_cache(state, monkeypatch):
 def test_lock_guard_restores_raw_cache(config):
     import copy
 
-    from optimiser.model import Choice, ChoiceGroup, Session
+    from kairos.model import Choice, ChoiceGroup, Session
 
     all_weeks = frozenset(range(1, 14))
     tut = ChoiceGroup(
@@ -238,7 +238,7 @@ def test_lock_guard_restores_raw_cache(config):
 
 def test_retune_caps_arrangements_at_max_arrangements(config):
     # retune must materialize at most config.max_arrangements distinct arrangements.
-    from optimiser.model import Choice, ChoiceGroup, Session
+    from kairos.model import Choice, ChoiceGroup, Session
 
     cfg = copy.deepcopy(config)
     cfg.fixed = {}
@@ -256,7 +256,7 @@ def test_retune_caps_arrangements_at_max_arrangements(config):
 
 
 def test_arr_structure_reused_on_weight_change(state):
-    from optimiser.search import rank_arrangements
+    from kairos.search import rank_arrangements
 
     before = state._arr_structure
     state.set_weight("free_days", 9)
@@ -282,7 +282,7 @@ def test_arr_structure_rebuilt_on_successful_lock(state):
 def test_arr_structure_restored_on_rejected_lock(config):
     import copy
 
-    from optimiser.model import Choice, ChoiceGroup, Session
+    from kairos.model import Choice, ChoiceGroup, Session
 
     all_weeks = frozenset(range(1, 14))
     tut = ChoiceGroup(

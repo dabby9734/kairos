@@ -1,6 +1,6 @@
 import pytest
 
-from optimiser.tui.startup import build_state
+from kairos.tui.startup import build_state
 
 SHARE_URL = "https://nusmods.com/timetable/sem-1/share?ALPHA=TUT:01,LEC:1&BETA=LAB:L2,LEC:1"
 
@@ -8,7 +8,7 @@ SHARE_URL = "https://nusmods.com/timetable/sem-1/share?ALPHA=TUT:01,LEC:1&BETA=L
 def _patch_fetch(monkeypatch, alpha_json, beta_json):
     fixtures = {"ALPHA": alpha_json, "BETA": beta_json}
     monkeypatch.setattr(
-        "optimiser.tui.startup.api.fetch_module", lambda ay, code, cache: fixtures[code]
+        "kairos.tui.startup.api.fetch_module", lambda ay, code, cache: fixtures[code]
     )
 
 

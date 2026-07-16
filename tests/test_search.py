@@ -2,10 +2,10 @@ import itertools
 
 import pytest
 
-from optimiser.api import build_groups, semester_timetable
-from optimiser.model import Choice, ChoiceGroup, Session
-from optimiser.scoring import score_assignment
-from optimiser.search import EnumeratedSpace, find_irreconcilable, prepare_groups, rank_arrangements, search
+from kairos.api import build_groups, semester_timetable
+from kairos.model import Choice, ChoiceGroup, Session
+from kairos.scoring import score_assignment
+from kairos.search import EnumeratedSpace, find_irreconcilable, prepare_groups, rank_arrangements, search
 
 
 @pytest.fixture
@@ -103,7 +103,7 @@ def test_best_by_footprint_matches_bruteforce(groups, config):
 
 def test_find_irreconcilable(config):
     from tests.conftest import lesson
-    from optimiser.api import build_groups as bg
+    from kairos.api import build_groups as bg
 
     a = bg("A", [lesson("1", "Tutorial", "Monday", "1000", "1200")])
     b = bg("B", [lesson("1", "Tutorial", "Monday", "1100", "1300")])
@@ -112,7 +112,7 @@ def test_find_irreconcilable(config):
     assert {pair[0].module, pair[1].module} == {"A", "B"}
 
 
-from optimiser.search import EnumeratedSpace, enumerate_clashfree, rank
+from kairos.search import EnumeratedSpace, enumerate_clashfree, rank
 
 
 def test_search_equals_enumerate_then_rank(groups, config):
@@ -128,7 +128,7 @@ def test_search_equals_enumerate_then_rank(groups, config):
 def test_rank_scored_param_is_behavior_preserving(groups, config):
     # rank must yield identical top/best_by_footprint whether or not a pre-scored
     # list is supplied (Fix D / M5: score every combo only once per retune).
-    from optimiser.search import _score_combos
+    from kairos.search import _score_combos
     space = enumerate_clashfree(groups)
     a = rank(space, config)
     b = rank(space, config, scored=_score_combos(space, config))
@@ -228,7 +228,7 @@ def test_rank_arrangements_lists_venue_twins(config):
 
 def test_rank_arrangements_scored_param_is_behavior_preserving(config):
     # Passing a pre-scored list must produce identical arrangements (Fix D / M5).
-    from optimiser.search import _score_combos
+    from kairos.search import _score_combos
     odd = frozenset({1, 3, 5})
     even = frozenset({2, 4, 6})
     lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
@@ -279,7 +279,7 @@ def test_rank_arrangements_materializing_winners_matches_slice(config):
 
 
 def test_weight_scored_matches_score_combos(groups, config):
-    from optimiser.search import (
+    from kairos.search import (
         _score_combos,
         enumerate_clashfree,
         score_raw,
@@ -298,7 +298,7 @@ def test_weight_scored_matches_score_combos(groups, config):
 def test_score_raw_returns_weight_independent_entries(groups, config):
     import copy
 
-    from optimiser.search import enumerate_clashfree, score_raw
+    from kairos.search import enumerate_clashfree, score_raw
 
     space = enumerate_clashfree(groups)
     other = copy.deepcopy(config)
@@ -311,7 +311,7 @@ def test_build_structure_collapse_produces_correct_arrangement(config):
     # Week-twin collapse: 01 odd / 02 even at the same Mon slot -> one collapsed
     # template holding both members -> one arrangement with variant_count 2 and both
     # class numbers offered as a bid (mirrors test_rank_arrangements_collapses_week_twins).
-    from optimiser.search import build_arrangement_structure, rank_arrangements
+    from kairos.search import build_arrangement_structure, rank_arrangements
 
     odd = frozenset({1, 3, 5})
     even = frozenset({2, 4, 6})
@@ -330,7 +330,7 @@ def test_build_structure_collapse_produces_correct_arrangement(config):
 def test_build_structure_entangle_keeps_variants_separate(config):
     # Opposite-week ALPHA/BETA at the same slot: product (4) != member count (2), so
     # the group must NOT collapse -> two single-member templates, two arrangements.
-    from optimiser.search import build_arrangement_structure, rank_arrangements
+    from kairos.search import build_arrangement_structure, rank_arrangements
 
     odd = frozenset({1, 3, 5})
     even = frozenset({2, 4, 6})

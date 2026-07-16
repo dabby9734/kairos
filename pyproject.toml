@@ -1,7 +1,7 @@
 [project]
-name = "optimiser"
+name = "kairos"
 version = "0.1.0"
-description = "NUS timetable optimiser and ballot ranker"
+description = "Kairos — NUS timetable optimiser and ballot ranker"
 requires-python = ">=3.11"
 dependencies = ["requests", "PyYAML", "textual"]
 
@@ -9,14 +9,14 @@ dependencies = ["requests", "PyYAML", "textual"]
 dev = ["pytest", "pytest-asyncio"]
 
 [project.scripts]
-optimiser = "optimiser.cli:main"
+kairos = "kairos.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["optimiser*"]
+include = ["kairos*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
