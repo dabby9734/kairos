@@ -264,6 +264,24 @@ def test_class_warnings_pairing_suppressed_when_impossible(config):
     assert not any("same-day" in w for w in class_warnings(a, config, space=space))
 
 
+def test_class_warnings_unpairable_slots_kwarg_matches_space(config):
+    from kairos.scoring import pairing_impossibility
+    from kairos.search import EnumeratedSpace
+
+    all_weeks = frozenset(range(1, 14))
+    lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, all_weeks, "COM1"),))
+    tut = Choice("ALPHA", "Tutorial", "01", (Session("Tuesday", 540, 600, all_weeks, "COM1"),))
+    a = {("ALPHA", "Lecture"): lec, ("ALPHA", "Tutorial"): tut}
+    members = {
+        ("ALPHA", "Lecture"): {lec.footprint: [lec]},
+        ("ALPHA", "Tutorial"): {tut.footprint: [tut]},
+    }
+    space = EnumeratedSpace(combos=(), members=members)
+    # The precomputed-kwarg path is behavior-identical to computing from space.
+    unpairable = pairing_impossibility(space.members)[1]
+    assert class_warnings(a, config, unpairable_slots=unpairable) == class_warnings(a, config, space=space)
+
+
 def test_class_warnings_pairing_mixed_suppresses_only_impossible(config):
     from kairos.search import EnumeratedSpace
 

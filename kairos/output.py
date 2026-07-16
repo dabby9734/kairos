@@ -65,14 +65,16 @@ def render_breakdown(total: float, breakdown: dict) -> str:
     return "\n".join(lines)
 
 
-def class_warnings(assignment: dict, config, space=None) -> list[str]:
+def class_warnings(assignment: dict, config, space=None, unpairable_slots=None) -> list[str]:
     """Human-readable warnings for classes/days that fail the user's criteria in
     this timetable. Each check mirrors scoring.score_assignment so warnings and
     score never disagree. free_days (a bonus) and gaps (an aggregate) produce no
     per-class warning. A component whose weight is 0 is disabled: it produces no
     warnings. When `space` is given, same_day_pairing warnings are suppressed for
     slots that can never share a lecture day (the pairing is impossible, not a
-    fixable problem). Returns [] when nothing is violated."""
+    fixable problem); callers with a cached result may instead pass
+    `unpairable_slots` directly (the TUI does, from its space-scoped cache).
+    Returns [] when nothing is violated."""
     prefs = config.preferences
     weights = prefs.weights
     warnings: list[str] = []
@@ -114,9 +116,10 @@ def class_warnings(assignment: dict, config, space=None) -> list[str]:
     # (not a violation). Slots that can never share a lecture day given the
     # offered schedule (unpairable_slots) are impossible, not fixable — skip them.
     if weights.get("same_day_pairing", 0) != 0:
-        unpairable_slots = frozenset()
-        if space is not None:
-            _unpair_mods, unpairable_slots = pairing_impossibility(space.members)
+        if unpairable_slots is None:
+            unpairable_slots = frozenset()
+            if space is not None:
+                _unpair_mods, unpairable_slots = pairing_impossibility(space.members)
         lecture_days: dict = {}
         for choice in assignment.values():
             if choice.lesson_type == "Lecture":

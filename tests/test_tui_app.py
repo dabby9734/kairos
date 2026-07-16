@@ -144,7 +144,7 @@ async def test_copy_link_failure_surfaces_url(state, tmp_path, monkeypatch):
 async def test_warnings_show_in_timetable_mode_only(state, tmp_path, monkeypatch):
     from rich.console import Console
 
-    monkeypatch.setattr("kairos.tui.app.class_warnings", lambda a, c, space=None: ["⚠ SENTINEL"])
+    monkeypatch.setattr("kairos.tui.app.class_warnings", lambda a, c, space=None, unpairable_slots=None: ["⚠ SENTINEL"])
     app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         warnings_text = app.query_one("#warnings-text", Static)
@@ -226,7 +226,7 @@ async def test_lock_then_unlock_timeslot_restores(state, tmp_path):
 async def test_all_criteria_met_shown_when_no_warnings(state, tmp_path, monkeypatch):
     from rich.console import Console
 
-    monkeypatch.setattr("kairos.tui.app.class_warnings", lambda a, c, space=None: [])
+    monkeypatch.setattr("kairos.tui.app.class_warnings", lambda a, c, space=None, unpairable_slots=None: [])
     app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         warnings_text = app.query_one("#warnings-text", Static)

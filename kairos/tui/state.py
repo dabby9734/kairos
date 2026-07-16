@@ -16,6 +16,7 @@ from ..search import (
     score_raw,
     weight_scored,
 )
+from ..scoring import pairing_impossibility
 
 _PREF_FIELDS = {
     "earliest_start",
@@ -57,6 +58,7 @@ class AppState:
     base_groups: list = None           # raw groups, for re-locking rebuilds
     _raw_cache: list = None            # cached score_raw(space); reused by reweight()
     _arr_structure: list = None        # cached build_arrangement_structure(space); space-change only
+    _unpairable: tuple = None          # cached pairing_impossibility(space.members); space-change only
 
     @classmethod
     def from_parts(cls, config, groups) -> "AppState":
@@ -86,7 +88,15 @@ class AppState:
     def _rebuild(self):
         self.groups, self.space = self._prepare_space()
         self._arr_structure = build_arrangement_structure(self.space)
+        self._refresh_unpairable()
         return self.retune()
+
+    def _refresh_unpairable(self):
+        self._unpairable = pairing_impossibility(self.space.members)
+
+    @property
+    def unpairable_slots(self) -> frozenset:
+        return self._unpairable[1]
 
     def _rank_from(self, scored):
         # Shared ranking tail: build result.top and the capped arrangement list
@@ -144,18 +154,19 @@ class AppState:
         snapshot = (
             {m: dict(v) for m, v in self.config.locked.items()},
             self.groups, self.space, self.result, self.arrangements,
-            self._raw_cache, self._arr_structure,
+            self._raw_cache, self._arr_structure, self._unpairable,
         )
         mutate()
         prepared, space = self._prepare_space()
         if not space.combos:
             (self.config.locked, self.groups, self.space,
              self.result, self.arrangements,
-             self._raw_cache, self._arr_structure) = snapshot
+             self._raw_cache, self._arr_structure, self._unpairable) = snapshot
             return False
         self.groups = prepared
         self.space = space
         self._arr_structure = build_arrangement_structure(space)
+        self._refresh_unpairable()
         self.retune()
         return True
 

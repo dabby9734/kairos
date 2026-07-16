@@ -260,7 +260,10 @@ class KairosApp(App):
                 and 0 <= tlist.index < len(self._timeslots)):
             module, lesson_type = self._current_class
             preview = (module, lesson_type, self._timeslots[tlist.index]["sig"])
-        warnings = class_warnings(arr.assignment, self.state.config, space=self.state.space)
+        warnings = class_warnings(
+            arr.assignment, self.state.config,
+            unpairable_slots=self.state.unpairable_slots,
+        )
         if warnings:
             warnings_text.update(Text("\n".join(warnings), style="dim yellow"))
         else:

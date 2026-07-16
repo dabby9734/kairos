@@ -305,6 +305,44 @@ def test_arr_structure_restored_on_rejected_lock(config):
     assert state._arr_structure is before  # rejected lock restored the prior structure
 
 
+def test_unpairable_reused_on_weight_change(state):
+    before = state._unpairable
+    state.set_weight("gaps", 9)
+    assert state._unpairable is before  # weight move must NOT recompute pairing impossibility
+
+
+def test_unpairable_rebuilt_on_lock_and_restored_on_rejected_lock(config):
+    import copy
+
+    from kairos.model import Choice, ChoiceGroup, Session
+
+    all_weeks = frozenset(range(1, 14))
+    tut = ChoiceGroup(
+        "ALPHA", "Tutorial",
+        [
+            Choice("ALPHA", "Tutorial", "T1", (Session("Monday", 540, 600, all_weeks, "COM1"),)),
+            Choice("ALPHA", "Tutorial", "T2", (Session("Tuesday", 540, 600, all_weeks, "COM1"),)),
+        ],
+    )
+    lab = ChoiceGroup(
+        "BETA", "Laboratory",
+        [Choice("BETA", "Laboratory", "L1", (Session("Monday", 540, 600, all_weeks, "COM1"),))],
+    )
+    cfg = copy.deepcopy(config)
+    cfg.fixed, cfg.locked = {}, {}
+    cfg.modules = {"ALPHA": {"TUT": 3}, "BETA": {"LAB": 3}}
+    state = AppState.from_parts(cfg, [tut, lab])
+
+    before = state._unpairable
+    assert state.set_lock("ALPHA", "TUT", "T2") is True  # narrows the space -> commit
+    assert state._unpairable is not before  # rebuilt for the new space
+
+    # Rejected lock: the pre-mutation cache is restored.
+    before_rejected = state._unpairable
+    assert state.set_lock("ALPHA", "TUT", "T1") is False  # empties the space -> rejected
+    assert state._unpairable is before_rejected  # restored on rollback
+
+
 def test_offered_timeslots_collapses_twins_and_sorts(state):
     rows = state.offered_timeslots("ALPHA", "Tutorial")
     # Fixture: 01 Mon 14:00-15:00; 02 & 03 both Tue 09:00-10:00 (share a slot sig).
