@@ -48,6 +48,29 @@ async def test_priority_reorder_follows_module(state, tmp_path):
         assert app.state.config.priority[lst.index] == moved_module
 
 
+async def test_move_priority_emits_no_highlighted_events(state, tmp_path, monkeypatch):
+    # Rebuilding #priority-list must not post ListView.Highlighted (re-entrancy
+    # guard, same invariant as the other list rebuilds — see commit 2fec8c5).
+    seen = []
+    original = KairosApp.on_list_view_highlighted
+
+    def spy(self, event):
+        seen.append(event.list_view.id)
+        return original(self, event)
+
+    monkeypatch.setattr(KairosApp, "on_list_view_highlighted", spy)
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        lst = app.query_one("#priority-list", ListView)
+        app.set_focus(lst)
+        lst.index = len(app.state.config.priority) - 1
+        await pilot.pause()
+        before = seen.count("priority-list")   # mount/focus events are allowed
+        await pilot.press("[")                  # move up -> rebuilds the list
+        await pilot.pause()
+        assert seen.count("priority-list") == before  # rebuild emitted none
+
+
 async def test_toggle_ballot_view(state, tmp_path):
     app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:

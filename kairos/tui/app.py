@@ -375,10 +375,11 @@ class KairosApp(App):
             return
         module = self.state.config.priority[lst.index]
         self.state.move_priority(module, delta)
-        lst.clear()
-        for m in self.state.config.priority:
-            lst.append(ListItem(Label(m)))
-        lst.index = self.state.config.priority.index(module)  # highlight follows the moved module
+        with self.prevent(ListView.Highlighted):
+            lst.clear()
+            for m in self.state.config.priority:
+                lst.append(ListItem(Label(m)))
+            lst.index = self.state.config.priority.index(module)  # highlight follows the moved module
         if self.ballot_mode:
             self._refresh_detail()
 
