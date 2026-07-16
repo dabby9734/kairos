@@ -12,7 +12,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Label, ListItem, ListView, Static, TabbedContent, TabPane
 
-from ..model import DAYS, LESSON_ABBREV, fmt_time
+from ..model import DAYS, LESSON_ABBREV, fmt_clock, fmt_time
 from ..output import class_warnings, render_breakdown, render_snake, share_url
 from .render import module_colours, render_week_rich
 from .widgets import Slider
@@ -52,10 +52,6 @@ _PREFS = [
     ("max_difficulty_per_day", 1, 30, 1),
 ]
 _CLOCK_PREFS = {"earliest_start", "latest_end", "lunch_start", "lunch_end"}
-
-
-def _fmt_clock(minutes: int) -> str:
-    return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
 def _render_bids(arrangement) -> Text:
@@ -146,7 +142,7 @@ class KairosApp(App):
                     with TabPane("Times", id="tab-times"):
                         with VerticalScroll():
                             for name, lo, hi, step in _PREFS:
-                                fmt = _fmt_clock if name in _CLOCK_PREFS else str
+                                fmt = fmt_clock if name in _CLOCK_PREFS else str
                                 yield Slider(
                                     name, lo, hi,
                                     int(getattr(self.state.config.preferences, name)),

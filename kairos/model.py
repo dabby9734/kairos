@@ -33,6 +33,10 @@ def fmt_time(minutes: int) -> str:
     return f"{minutes // 60:02d}{minutes % 60:02d}"
 
 
+def fmt_clock(minutes: int) -> str:
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
 def week_label(weeks) -> str:
     """Short human label for a session's teaching weeks: '' for the full 13-week
     run (or empty), 'even wks'/'odd wks' for pure even/odd sets, else a compact
@@ -75,6 +79,13 @@ class Choice:
     lesson_type: str  # full name, e.g. "Tutorial"
     class_no: str
     sessions: tuple
+
+    @property
+    def slot_sig(self) -> frozenset:
+        """Slot signature ignoring class number, venue AND weeks: two choices
+        share a signature iff they occupy the same (day, start, end, online)
+        sessions."""
+        return frozenset((s.day, s.start, s.end, s.online) for s in self.sessions)
 
     @property
     def footprint(self) -> frozenset:

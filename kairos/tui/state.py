@@ -3,10 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .. import ballot
-from ..model import DAYS, LESSON_ABBREV
+from ..model import DAYS, LESSON_ABBREV, fmt_clock
 from ..search import (
     EnumeratedSpace,
-    _slot_sig,
     build_arrangement_structure,
     enumerate_clashfree,
     find_irreconcilable,
@@ -26,10 +25,6 @@ _PREF_FIELDS = {
     "lunch_minutes",
     "max_difficulty_per_day",
 }
-
-
-def _fmt_clock(minutes: int) -> str:
-    return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
 def normalize_difficulties(config, groups) -> None:
@@ -194,14 +189,14 @@ class AppState:
     def offered_timeslots(self, module, lesson_type) -> list:
         """Distinct offered timeslots for a class, from the FULL offered set
         (base_groups, so a current lock does not narrow it). One dict per distinct
-        _slot_sig, sorted by (day, start): sig, class_nos (sorted), sessions (a
+        slot_sig, sorted by (day, start): sig, class_nos (sorted), sessions (a
         representative choice's sessions), rep (representative class number)."""
         group = self._base_group(module, lesson_type)
         if group is None:
             return []
         by_sig: dict = {}
         for choice in group.choices:
-            by_sig.setdefault(_slot_sig(choice), []).append(choice)
+            by_sig.setdefault(choice.slot_sig, []).append(choice)
         rows = []
         for sig, choices in by_sig.items():
             choices = sorted(choices, key=lambda c: c.class_no)
@@ -215,7 +210,7 @@ class AppState:
         return rows
 
     def locked_sig(self, module, lesson_type):
-        """The _slot_sig this class is currently locked to, or None."""
+        """The slot_sig this class is currently locked to, or None."""
         abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
         class_no = (self.config.locked.get(module) or {}).get(abbrev)
         if class_no is None:
@@ -224,7 +219,7 @@ class AppState:
         if group is None:
             return None
         choice = next((c for c in group.choices if c.class_no == str(class_no)), None)
-        return _slot_sig(choice) if choice else None
+        return choice.slot_sig if choice else None
 
     def move_priority(self, module: str, delta: int) -> None:
         order = self.config.priority
@@ -261,10 +256,10 @@ class AppState:
             "locked": self.config.locked,
             "priority": list(self.config.priority),
             "preferences": {
-                "earliest_start": _fmt_clock(prefs.earliest_start),
-                "latest_end": _fmt_clock(prefs.latest_end),
+                "earliest_start": fmt_clock(prefs.earliest_start),
+                "latest_end": fmt_clock(prefs.latest_end),
                 "max_difficulty_per_day": prefs.max_difficulty_per_day,
-                "lunch_window": [_fmt_clock(prefs.lunch_start), _fmt_clock(prefs.lunch_end)],
+                "lunch_window": [fmt_clock(prefs.lunch_start), fmt_clock(prefs.lunch_end)],
                 "lunch_minutes": prefs.lunch_minutes,
                 "weights": dict(prefs.weights),
             },

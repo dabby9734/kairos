@@ -53,7 +53,7 @@ def ranked_options(result, config) -> dict:
             if key not in viable:
                 continue  # never part of any clash-free timetable
             best = result.best_by_footprint[key]
-            sig = frozenset((s.day, s.start, s.end, s.online) for s in choices[0].sessions)
+            sig = choices[0].slot_sig
             clash = clashsets[key]
             placed = False
             for cl in clusters:

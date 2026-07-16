@@ -3,6 +3,7 @@ from kairos.model import (
     LESSON_FULL,
     Choice,
     Session,
+    fmt_clock,
     fmt_time,
     parse_clock,
     parse_time,
@@ -19,6 +20,22 @@ def test_time_parsing():
     assert parse_time("0930") == 570
     assert parse_clock("09:30") == 570
     assert fmt_time(570) == "0930"
+
+
+def test_slot_sig_ignores_class_no_venue_and_weeks():
+    a = Choice("M", "Tutorial", "01", (sess("Monday", 600, 720, venue="COM1"),))
+    b = Choice("M", "Tutorial", "99", (sess("Monday", 600, 720, weeks=frozenset({1, 3}), venue="LT7"),))
+    c = Choice("M", "Tutorial", "02", (sess("Monday", 540, 660, venue="COM1"),))
+    assert a.slot_sig == b.slot_sig  # class_no, venue, weeks all ignored
+    assert a.slot_sig != c.slot_sig  # different start time -> different sig
+    # slot_sig drops weeks; footprint keeps them, so they differ when weeks aren't ALL
+    assert b.slot_sig != b.footprint
+
+
+def test_fmt_clock():
+    assert fmt_clock(600) == "10:00"
+    assert fmt_clock(605) == "10:05"
+    assert parse_clock(fmt_clock(675)) == 675  # inverse of parse_clock
 
 
 def test_lesson_type_maps_roundtrip():
