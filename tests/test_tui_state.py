@@ -189,23 +189,25 @@ def test_reweight_equivalent_to_full_retune(state):
 
 
 def test_set_weight_does_not_recompute_raw(state, monkeypatch):
-    # The whole point of the cache: a weight slider must NOT re-run compute_raw.
+    # The whole point of the cache: a weight slider must NOT re-run the raw pass.
+    # score_raw combines per-choice fragments via _combine, so that is the probe.
     import kairos.search as search
 
     calls = {"n": 0}
-    real = search.compute_raw
-    monkeypatch.setattr(search, "compute_raw", lambda *a, **k: calls.__setitem__("n", calls["n"] + 1) or real(*a, **k))
+    real = search._combine
+    monkeypatch.setattr(search, "_combine", lambda *a, **k: calls.__setitem__("n", calls["n"] + 1) or real(*a, **k))
     state.set_weight("free_days", 7)
     assert calls["n"] == 0  # served entirely from _raw_cache
 
 
 def test_set_difficulty_rebuilds_raw_cache(state, monkeypatch):
-    # A difficulty change dirties raw, so it MUST rebuild the cache (compute_raw runs).
+    # A difficulty change dirties raw, so it MUST rebuild the cache (the raw pass
+    # re-runs). score_raw combines per-choice fragments via _combine.
     import kairos.search as search
 
     calls = {"n": 0}
-    real = search.compute_raw
-    monkeypatch.setattr(search, "compute_raw", lambda *a, **k: calls.__setitem__("n", calls["n"] + 1) or real(*a, **k))
+    real = search._combine
+    monkeypatch.setattr(search, "_combine", lambda *a, **k: calls.__setitem__("n", calls["n"] + 1) or real(*a, **k))
     state.set_difficulty("ALPHA", "TUT", 5)
     assert calls["n"] > 0
 

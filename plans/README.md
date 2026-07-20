@@ -19,7 +19,7 @@ to treat the rename. The verification command for everything is
 | 002  | Guard priority-list rebuild against Highlighted re-entrancy | P2 | S | — | DONE |
 | 003  | Cache pairing_impossibility on AppState | P2 | S | — | DONE |
 | 004  | Single source of truth for slot_sig and fmt_clock | P3 | S | 003 (soft) | DONE |
-| 005  | Precompute per-choice scoring fragments (slim `compute_raw`) | P1 | L | — | TODO |
+| 005  | Precompute per-choice scoring fragments (slim `compute_raw`) | P1 | L | — | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 

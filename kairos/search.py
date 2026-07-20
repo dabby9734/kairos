@@ -5,7 +5,7 @@ import itertools
 from dataclasses import dataclass
 
 from .model import LESSON_ABBREV, ChoiceGroup, week_label
-from .scoring import compute_raw, pairing_impossibility, weight_raw
+from .scoring import _combine, _fragment, compute_raw, pairing_impossibility, weight_raw
 
 
 @dataclass
@@ -102,11 +102,23 @@ def enumerate_clashfree(groups: list) -> EnumeratedSpace:
 
 def score_raw(space: EnumeratedSpace, config) -> list:
     """The expensive, weight-INDEPENDENT scoring pass: compute each combo's raw
-    criteria once. Cache this; a weight change only needs weight_scored (below)."""
+    criteria once. Cache this; a weight change only needs weight_scored (below).
+
+    Combos reuse the same handful of Choice objects, so each distinct choice's
+    scoring fragment is built once and reused across every combo it appears in
+    (keyed by Choice value; the cache is per-call, so a config change rebuilds
+    it automatically)."""
     unpairable_modules, _ = pairing_impossibility(space.members)
+    frag_cache: dict = {}
     entries = []
     for combo in space.combos:
-        raw = compute_raw(list(combo), config, unpairable_modules)
+        frags = []
+        for c in combo:
+            f = frag_cache.get(c)
+            if f is None:
+                f = frag_cache[c] = _fragment(c, config)
+            frags.append(f)
+        raw = _combine(frags, config, unpairable_modules)
         assignment = {(c.module, c.lesson_type): c for c in combo}
         entries.append((raw, assignment, combo))
     return entries

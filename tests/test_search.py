@@ -343,3 +343,17 @@ def test_build_structure_entangle_keeps_variants_separate(config):
     assert [len(t.member_indices) for t in structure] == [1, 1]  # entangle branch: two single templates
     arrs = rank_arrangements(space, config, structure=structure)
     assert len(arrs) == 2 and all(a.variant_count == 1 for a in arrs)
+
+
+def test_score_raw_matches_direct_compute_raw(groups, config):
+    # The per-choice fragment cache in score_raw must never diverge from calling
+    # compute_raw directly per combo (batching is an optimisation, not a change).
+    from kairos.scoring import compute_raw, pairing_impossibility
+    from kairos.search import enumerate_clashfree, score_raw
+
+    space = enumerate_clashfree(groups)
+    entries = score_raw(space, config)
+    assert len(entries) > 1  # guard: the space really exercises reuse across combos
+    unpair, _ = pairing_impossibility(space.members)
+    for raw, _assignment, combo in entries:
+        assert raw == compute_raw(list(combo), config, unpair)
