@@ -27,6 +27,23 @@ _PREF_FIELDS = {
 }
 
 
+@dataclass(frozen=True)
+class SelectableGroup:
+    """A group the user can actually decide between — one row of the Classes pane.
+
+    Deliberately distinct from search.SlotBid: a SlotBid is something you BALLOT
+    for and may not be granted, whereas this covers any group offering more than
+    one timeslot, including lectures you simply pick. Keeping them separate is
+    what stops lectures leaking into the ballot output."""
+
+    module: str
+    lesson_type: str      # full name, e.g. "Lecture"
+    abbrev: str           # e.g. "LEC"
+    balloted: bool
+    current_class_no: str
+    locked: bool
+
+
 def normalize_difficulties(config, groups) -> None:
     by_module: dict = {}
     for group in groups:
@@ -207,6 +224,31 @@ class AppState:
                 "rep": choices[0].class_no,
             })
         rows.sort(key=lambda r: (DAYS.index(r["sessions"][0].day), r["sessions"][0].start))
+        return rows
+
+    def selectable_groups(self, assignment: dict) -> list:
+        """Rows for the Classes pane: every offered group with more than one
+        distinct timeslot, balloted or not.
+
+        Slot counting uses base_groups (the FULL offered set) rather than the
+        prepared groups, for the same reason offered_timeslots does — a locked
+        group is narrowed to a single slot in the prepared set, so counting there
+        would make the row disappear the moment the user locked it."""
+        rows = []
+        for group in self.base_groups:
+            if len({c.slot_sig for c in group.choices}) < 2:
+                continue
+            abbrev = LESSON_ABBREV.get(group.lesson_type, group.lesson_type)
+            choice = assignment.get((group.module, group.lesson_type))
+            rows.append(SelectableGroup(
+                module=group.module,
+                lesson_type=group.lesson_type,
+                abbrev=abbrev,
+                balloted=abbrev in self.config.balloted_types,
+                current_class_no=choice.class_no if choice else "",
+                locked=self.is_locked(group.module, abbrev),
+            ))
+        rows.sort(key=lambda r: (r.module, r.lesson_type))
         return rows
 
     def locked_sig(self, module, lesson_type):

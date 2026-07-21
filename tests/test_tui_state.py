@@ -364,3 +364,36 @@ def test_locked_sig_none_then_set(state):
     assert state.set_lock("ALPHA", "TUT", "01") is True
     sig = state.locked_sig("ALPHA", "Tutorial")
     assert sig == frozenset({("Monday", 840, 900, False)})
+
+
+def test_selectable_groups_lists_multi_slot_groups_including_lectures(state):
+    arr = state.top_arrangements()[0]
+    rows = state.selectable_groups(arr.assignment)
+    keys = [(r.module, r.abbrev) for r in rows]
+    # BETA LEC has two classes (Fri online / Thu physical) -> selectable
+    assert ("BETA", "LEC") in keys
+    # ALPHA LEC has a single class (one Mon+Wed bundle) -> nothing to choose
+    assert ("ALPHA", "LEC") not in keys
+    assert keys == sorted(keys)  # stable (module, lesson_type) ordering
+
+
+def test_selectable_groups_marks_balloted_and_current_class(state):
+    arr = state.top_arrangements()[0]
+    rows = {(r.module, r.abbrev): r for r in state.selectable_groups(arr.assignment)}
+    assert rows[("ALPHA", "TUT")].balloted is True
+    assert rows[("BETA", "LEC")].balloted is False
+    # current class number is read off the selected arrangement's assignment
+    expected = arr.assignment[("BETA", "Lecture")].class_no
+    assert rows[("BETA", "LEC")].current_class_no == expected
+
+
+def test_selectable_groups_counts_slots_from_base_groups(state):
+    # Locking narrows the PREPARED group to one slot. The row must survive,
+    # otherwise the pane row vanishes the instant the user locks it.
+    state.config.fixed = {}
+    state._rebuild()
+    assert state.set_lock("BETA", "LAB", "L1")
+    arr = state.top_arrangements()[0]
+    rows = {(r.module, r.abbrev): r for r in state.selectable_groups(arr.assignment)}
+    assert ("BETA", "LAB") in rows
+    assert rows[("BETA", "LAB")].locked is True
