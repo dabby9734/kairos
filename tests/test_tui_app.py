@@ -17,6 +17,62 @@ def state(alpha_json, beta_json, config):
     return AppState.from_parts(copy.deepcopy(config), groups)
 
 
+@pytest.fixture
+def gamma_state(alpha_json, gamma_json, config):
+    groups = build_groups("ALPHA", semester_timetable(alpha_json, 1)) + build_groups(
+        "GAMMA", semester_timetable(gamma_json, 1)
+    )
+    cfg = copy.deepcopy(config)
+    cfg.fixed = {}
+    cfg.modules = {"ALPHA": {"LEC": 2, "TUT": 4}, "GAMMA": 3}
+    cfg.priority = ["ALPHA", "GAMMA"]
+    return AppState.from_parts(cfg, groups)
+
+
+def test_fmt_timeslot_distinguishes_physical_from_online(gamma_state):
+    from kairos.tui.app import _fmt_timeslot
+
+    rows = gamma_state.offered_timeslots("GAMMA", "Lecture")
+    assert len(rows) == 2  # same times, different online-ness -> distinct sigs
+    labels = [_fmt_timeslot(row) for row in rows]
+    assert labels[0] != labels[1]          # the whole point
+    assert any("E-Learn_C" in lb for lb in labels)
+    assert any(lb.startswith("~") for lb in labels)  # online marker
+
+
+async def test_lecture_row_appears_and_locks(state, tmp_path):
+    state.config.fixed = {}
+    state._rebuild()
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        slot_list = app.query_one("#slot-list", ListView)
+        keys = [(r.module, r.abbrev) for r in app._rows]
+        assert ("BETA", "LEC") in keys  # lecture is now a row
+
+        slot_list.index = keys.index(("BETA", "LEC"))
+        app.set_focus(slot_list)
+        await pilot.pause()
+        tlist = app.query_one("#timeslot-list", ListView)
+        assert len(app._timeslots) == 2  # both lecture slots offered
+
+        app.set_focus(tlist)
+        tlist.index = 1
+        await pilot.press("l")
+        await pilot.pause()
+        assert app.state.is_locked("BETA", "LEC")
+
+
+async def test_locked_lecture_never_enters_ballot(state, tmp_path):
+    state.config.fixed = {}
+    state._rebuild()
+    assert state.set_lock("BETA", "LEC", "2")
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test():
+        for arr in app.state.top_arrangements():
+            assert all(b.lesson_type != "Lecture" for b in arr.bids)
+        assert all(e.lesson_type != "Lecture" for e in app.state.ballot_snake())
+
+
 async def test_slider_adjust_reranks(state, tmp_path):
     app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
@@ -181,13 +237,17 @@ def _slot_labels(app):
     return [str(lbl._Static__content) for lbl in app.query_one("#slot-list", ListView).query(Label)]
 
 
-async def test_slot_list_lists_balloted_slots(state, tmp_path):
+async def test_slot_list_lists_every_multi_slot_group(state, tmp_path):
     app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         labels = _slot_labels(app)
-        # ALPHA Tutorial is a balloted slot; BETA Lecture is fixed and excluded
-        assert any("ALPHA TUT" in t for t in labels)
-        assert not any("LEC" in t for t in labels)
+        # balloted groups are listed and tagged as such
+        assert any("ALPHA TUT" in t and "·ballot" in t for t in labels)
+        # BETA Lecture offers two classes, so it is selectable even though it is
+        # not balloted — this is the row that did not exist before
+        assert any("BETA LEC" in t and "·ballot" not in t for t in labels)
+        # ALPHA Lecture offers exactly one class: nothing to choose, so no row
+        assert not any("ALPHA LEC" in t for t in labels)
 
 
 async def test_lock_timeslot_marks_and_reduces(state, tmp_path):
@@ -250,11 +310,12 @@ async def test_timeslots_populate_from_highlighted_class(state, tmp_path):
         slot_list.index = 0  # ALPHA Tutorial
         await pilot.pause()
         labels = _timeslot_labels(app)
-        # two offered timeslots: Mon 14:00 (01) and Tue 09:00 (02/03)
+        # two offered timeslots: Mon 14:00 (01) and Tue 09:00 (02/03), each
+        # labelled with its venue so slot-sharing classes can be told apart
         # (fmt_time renders "1400", not "14:00" — matches the rest of the codebase,
         # e.g. tests/test_output.py's "Mon 1400-1500" for this same fixture)
-        assert any("Mon 1400-1500 (01)" in t for t in labels)
-        assert any("Tue 0900-1000 (02/03)" in t for t in labels)
+        assert any("Mon 1400-1500  @COM1-0201 (01)" in t for t in labels)
+        assert any("Tue 0900-1000  @COM1-0201 (02/03)" in t for t in labels)
         assert "ALPHA TUT" in str(app.query_one("#timeslot-list", ListView).border_title)
 
 

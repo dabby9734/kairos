@@ -53,6 +53,25 @@ def beta_json():
 
 
 @pytest.fixture
+def gamma_json():
+    """GAMMA: two lecture classes at IDENTICAL times, one physical one online
+    (the CS1231S shape). Their slot_sigs differ only by `online`, so they are
+    two distinct rows that a day/time-only label cannot tell apart."""
+    return {
+        "moduleCode": "GAMMA",
+        "semesterData": [
+            {
+                "semester": 1,
+                "timetable": [
+                    lesson("1", "Lecture", "Thursday", "1200", "1400", venue="UT-AUD1"),
+                    lesson("2", "Lecture", "Thursday", "1200", "1400", venue="E-Learn_C"),
+                ],
+            }
+        ],
+    }
+
+
+@pytest.fixture
 def config():
     from kairos.config import DEFAULT_PREFERENCES, Config, Preferences
 
