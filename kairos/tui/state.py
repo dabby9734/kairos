@@ -232,7 +232,8 @@ class AppState:
 
     def selectable_groups(self, assignment: dict) -> list[SelectableGroup]:
         """Rows for the Classes pane: every offered group with more than one
-        distinct timeslot, balloted or not.
+        distinct timeslot, balloted or not — except groups pinned by `fixed`,
+        which offer nothing to decide (see the comment on that filter below).
 
         Slot counting uses base_groups (the FULL offered set) rather than the
         prepared groups, for the same reason offered_timeslots does — a locked
