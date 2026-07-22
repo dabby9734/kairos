@@ -35,8 +35,8 @@ def render_week_rich(assignment: dict, colours: dict, preview=None) -> Group:
 
     `preview` is an optional `(module, lesson_type, slot_sig)` triple for the
     timeslot the user is currently highlighting. If that class is already on this
-    exact slot, its existing strip and agenda line blink in place and nothing is
-    added. Otherwise the candidate is drawn as an extra blinking strip plus a
+    exact slot, its existing strip is inverted in place and nothing is added.
+    Otherwise the candidate is drawn as an extra inverted strip plus a
     `(preview)` agenda line, alongside the class's current slot."""
     hours = list(GRID_HOURS)
     first_hour = hours[0]
@@ -48,8 +48,8 @@ def render_week_rich(assignment: dict, colours: dict, preview=None) -> Group:
     rows: list = [header]
 
     # Flash mode: the previewed slot is exactly the one this class already
-    # occupies. Nothing new gets drawn — the real strips and agenda lines blink
-    # in place, rather than a phantom block opening a redundant second lane.
+    # occupies. Nothing new gets drawn — the real strips invert in place,
+    # rather than a phantom block opening a redundant second lane.
     flash_key = None
     preview_days = None
     if preview is not None:
@@ -129,18 +129,12 @@ def render_week_rich(assignment: dict, colours: dict, preview=None) -> Group:
                 full = f"{mark}{module} [{abbrev}]"
                 label = (full if len(full) <= width else f"{mark}{module}")[:width].ljust(width)
                 bg, fg = colours.get(module, ("white", "black"))
-                # Apple Terminal.app ignores SGR 5 (blink). Flash mode adds no
-                # duplicate bar/agenda line, so it needs `reverse` too, to stay
-                # visible there. Preview mode already draws an extra block plus
-                # a "(preview)" agenda line as a fallback signal, so it keeps
-                # plain blink.
-                if mode == "flash":
-                    blink_style = " blink reverse"
-                elif mode == "preview":
-                    blink_style = " blink"
-                else:
-                    blink_style = ""
-                style = f"{fg} on {bg}" + (" dim" if online else "") + blink_style
+                # Both highlight modes invert the bar. Deliberately not blink:
+                # Apple Terminal.app ignores SGR 5, which would leave flash mode
+                # (it adds no duplicate bar and no agenda line) with no signal
+                # at all there.
+                highlight = " reverse" if mode else ""
+                style = f"{fg} on {bg}" + (" dim" if online else "") + highlight
                 row.append(label, style=style)
                 cursor = span_end
             rows.append(row)
@@ -154,7 +148,6 @@ def render_week_rich(assignment: dict, colours: dict, preview=None) -> Group:
             rows.append(Text(
                 f"       {fmt_time(start)}-{fmt_time(end)} {module} "
                 f"{abbrev}[{class_no}] @{venue}{note}",
-                style="blink" if mode == "flash" else "",
             ))
 
     return Group(*rows)

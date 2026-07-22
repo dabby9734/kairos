@@ -165,7 +165,7 @@ def test_non_overlapping_day_uses_single_lane():
     assert lines[mon + 1].startswith("       ")          # next line is agenda (7 spaces), not a 2nd lane
 
 
-def test_preview_bar_is_blink_styled_and_shows_both():
+def test_preview_bar_is_inverted_and_shows_both():
     # Class currently on Monday; preview a candidate Tuesday slot for the SAME class.
     assignment = {("CS2030S", "Tutorial"): _choice("CS2030S", "Tutorial", "01", "Monday", 840, 900)}
     sig = frozenset({("Tuesday", 540, 600, False)})
@@ -175,15 +175,16 @@ def test_preview_bar_is_blink_styled_and_shows_both():
     mon = _day_row(text, "Mon")
     assert "CS2030S" in mon                       # current strip still shown (show-both)
     assert "0900-1000 CS2030S TUT (preview)" in text  # candidate agenda'd on Tuesday
-    # ANSI: the preview bar carries the blink escape (\x1b[5m), combined with the
-    # module's own colour SGR (additive style: fg on bg + blink), so a future
-    # colour-stripping regression is caught alongside the blink check.
+    # ANSI: the preview bar carries reverse (SGR 7), combined with the module's
+    # own colour SGR (additive style: fg on bg + reverse), so a future
+    # colour-stripping regression is caught alongside the reverse check.
     console = Console(width=200, force_terminal=True, color_system="standard")
     with console.capture() as cap:
         console.print(render_week_rich(assignment, colours, preview=("CS2030S", "Tutorial", sig)))
     ansi = cap.get()
-    assert "\x1b[5m" in ansi or ";5m" in ansi or "\x1b[5;" in ansi  # blink SGR (alone or combined)
-    assert "30;42m" in ansi  # CS2030S keeps its colour (black on green) under the blink
+    assert "\x1b[7;" in ansi or ";7;" in ansi  # reverse SGR, combined with the colour pair
+    assert "30;42m" in ansi  # CS2030S keeps its colour (black on green) under the reverse
+    assert "\x1b[5m" not in ansi and ";5m" not in ansi and "\x1b[5;" not in ansi  # no blink
 
 
 def test_preview_none_unchanged():
@@ -206,23 +207,23 @@ def test_previewing_current_slot_draws_no_duplicate_bar():
     assert "(preview)" not in flashed
 
 
-def test_flashed_slot_blinks_strip_and_agenda():
-    # Both the strip and its agenda line carry the blink SGR (5), and the strip
-    # keeps CS2030S's own colour pair (black on green -> 30;42) underneath it.
-    # The strip also carries reverse (SGR 7): Apple Terminal.app ignores blink,
-    # so flash mode (which draws no duplicate bar/agenda line as a fallback
-    # signal) needs a second, terminal-independent cue. The agenda line stays
-    # plain blink, since it isn't the primary signal in flash mode.
+def test_flashed_slot_inverts_strip_only():
+    # The strip carries reverse (SGR 7) over CS2030S's own colour pair
+    # (black on green -> 30;42). Blink is deliberately absent everywhere:
+    # Apple Terminal.app ignores SGR 5, and flash mode draws no duplicate bar
+    # and no extra agenda line, so blink alone would leave it with no signal.
+    # The agenda line is unstyled — the inverted bar is the whole cue.
     assignment = {("CS2030S", "Tutorial"): _choice("CS2030S", "Tutorial", "01", "Monday", 840, 900)}
     sig = frozenset({("Monday", 840, 900, False)})
     colours = module_colours(["CS2030S"])
     console = Console(width=200, force_terminal=True, color_system="standard")
     with console.capture() as cap:
         console.print(render_week_rich(assignment, colours, preview=("CS2030S", "Tutorial", sig)))
-    lines = cap.get().splitlines()
+    ansi = cap.get()
+    lines = ansi.splitlines()
     strip = next(line for line in lines if line.startswith("Mon"))
     agenda = next(line for line in lines if "TUT[01]" in line)
-    for line in (strip, agenda):
-        assert "\x1b[5m" in line or ";5m" in line or "\x1b[5;" in line
-    assert "\x1b[7m" in strip or ";7m" in strip or "\x1b[7;" in strip or ";7;" in strip
+    assert "\x1b[7;" in strip or ";7;" in strip  # inverted, combined with the colour pair
     assert "30;42" in strip
+    assert "\x1b[" not in agenda  # agenda line carries no styling at all
+    assert "\x1b[5m" not in ansi and ";5m" not in ansi and "\x1b[5;" not in ansi  # no blink
