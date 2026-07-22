@@ -238,6 +238,11 @@ def _slot_labels(app):
 
 
 async def test_slot_list_lists_every_multi_slot_group(state, tmp_path):
+    # The default config fixture pins BETA LEC via `fixed`, which now excludes it
+    # from the pane (Finding 1) — clear it so this test exercises the unfixed,
+    # genuinely selectable case it's meant to cover.
+    state.config.fixed = {}
+    state._rebuild()
     app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         labels = _slot_labels(app)

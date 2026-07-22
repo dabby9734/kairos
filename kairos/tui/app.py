@@ -70,13 +70,16 @@ def _render_bids(arrangement) -> Text:
     return Text("\n".join(lines), style="dim")
 
 
-def _fmt_timeslot(row) -> str:
+def _fmt_timeslot(row: dict) -> str:
     """Label one offered_timeslots row. Day/time alone is not enough: a class can
     be offered physically and online at the same day/time (e.g. CS1231S lecture 1
-    @UT-AUD1 vs 2 @E-Learn_C), which only the `~` online marker (reused from
-    tui.render) distinguishes. slot_sig deliberately ignores venue, so classes
-    differing only by venue collapse into a single row here — the venue segment
-    lists every venue used by the row's classes, not just the representative's."""
+    @UT-AUD1 vs 2 @E-Learn_C), which day/time alone cannot show — the `~` online
+    marker (reused from tui.render) and the venue segment each distinguish it,
+    since Session.online is derived from the venue string (model.py:63-65), so an
+    online class always carries an E-Learn* venue. slot_sig deliberately ignores
+    venue, so classes differing only by venue collapse into a single row here —
+    the venue segment lists every venue used by the row's classes, not just the
+    representative's."""
     sessions = row["sessions"]
     times = ", ".join(
         f"{s.day[:3]} {fmt_time(s.start)}-{fmt_time(s.end)}"

@@ -96,3 +96,69 @@ def test_build_state_from_url_writes_locked_not_fixed(
     # URL had BETA=LEC:1 — a non-balloted multi-option group
     assert state.config.locked["BETA"]["LEC"] == "1"
     assert not state.config.fixed
+
+
+def test_migrated_fixed_roundtrips_through_config_and_prepare_groups(
+    tmp_path, monkeypatch
+):
+    """Design spec section 8: 'the migrated form round-trips through
+    to_config_yaml -> load_config -> prepare_groups.' Joins the two halves that
+    were separately tested (migration in build_state; a locked round-trip on a
+    hand-locked state) so pressing `s` provably does not resurrect `fixed`.
+
+    Uses a purpose-built module (ZETA) whose LEC classes 1 & 2 share a slot_sig
+    (same day/time, differ only by venue) so the locked-twin-set narrowing is
+    distinguishable from a fixed-style single-class narrowing: class 3 sits on a
+    different slot_sig and must be dropped, while both 1 and 2 must survive."""
+    import yaml
+
+    from tests.conftest import lesson
+
+    from kairos.config import load_config
+    from kairos.search import prepare_groups
+
+    zeta_json = {
+        "moduleCode": "ZETA",
+        "semesterData": [
+            {
+                "semester": 1,
+                "timetable": [
+                    lesson("1", "Lecture", "Monday", "1000", "1200"),
+                    lesson("2", "Lecture", "Monday", "1000", "1200", venue="COM1-0202"),
+                    lesson("3", "Lecture", "Tuesday", "1400", "1600"),
+                ],
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        "kairos.tui.startup.api.fetch_module", lambda ay, code, cache: zeta_json
+    )
+    cfg = {
+        "acad_year": "2026-2027",
+        "semester": 1,
+        "modules": {"ZETA": {"difficulty": 3}},
+        "fixed": {"ZETA": {"LEC": "1"}},  # non-balloted -> migrates to locked
+        "priority": ["ZETA"],
+    }
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+
+    state = build_state(None, path, tmp_path / "cache")
+    assert state.config.locked["ZETA"]["LEC"] == "1"
+    assert "ZETA" not in state.config.fixed
+
+    data = state.to_config_yaml()
+    assert data["fixed"] == {}
+    assert data["locked"] == {"ZETA": {"LEC": "1"}}
+
+    reload_path = tmp_path / "reloaded.yaml"
+    reload_path.write_text(yaml.safe_dump(data))
+    reloaded = load_config(reload_path)
+
+    prepared = prepare_groups(state.base_groups, reloaded)
+    lec = next(g for g in prepared if g.module == "ZETA" and g.lesson_type == "Lecture")
+    # narrowed to the locked slot's twin set {1, 2} — not to a single class
+    # (that would mean fixed-style behaviour survived) and not left unnarrowed
+    # (that would mean the lock never applied): class 3 (different slot_sig)
+    # must be gone.
+    assert sorted(c.class_no for c in lec.choices) == ["1", "2"]

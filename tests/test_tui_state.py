@@ -367,6 +367,11 @@ def test_locked_sig_none_then_set(state):
 
 
 def test_selectable_groups_lists_multi_slot_groups_including_lectures(state):
+    # The default config fixture pins BETA LEC via `fixed` — clear it first so
+    # this test exercises the "unfixed, genuinely selectable" case rather than
+    # the excluded-fixed-group case (covered separately).
+    state.config.fixed = {}
+    state._rebuild()
     arr = state.top_arrangements()[0]
     rows = state.selectable_groups(arr.assignment)
     keys = [(r.module, r.abbrev) for r in rows]
@@ -378,6 +383,8 @@ def test_selectable_groups_lists_multi_slot_groups_including_lectures(state):
 
 
 def test_selectable_groups_marks_balloted_and_current_class(state):
+    state.config.fixed = {}  # see note above
+    state._rebuild()
     arr = state.top_arrangements()[0]
     rows = {(r.module, r.abbrev): r for r in state.selectable_groups(arr.assignment)}
     assert rows[("ALPHA", "TUT")].balloted is True
@@ -385,6 +392,26 @@ def test_selectable_groups_marks_balloted_and_current_class(state):
     # current class number is read off the selected arrangement's assignment
     expected = arr.assignment[("BETA", "Lecture")].class_no
     assert rows[("BETA", "LEC")].current_class_no == expected
+
+
+def test_selectable_groups_excludes_fixed_group_even_with_multiple_slots(state):
+    # Finding 1: prepare_groups applies `fixed` before ever reading `locked` and
+    # short-circuits, so a group pinned by `fixed` must not render a pane row —
+    # pressing `l` on it would write a `locked` entry that is silently ignored,
+    # and the row would falsely show as locked while the timetable never moves.
+    #
+    # migrate_fixed_to_locked (tui/startup.py) clears non-balloted `fixed`
+    # entries at TUI load, so the surviving real-world case is a balloted
+    # hand-written pin. Model that here: BETA LEC is not balloted by default, so
+    # mark it balloted and set config.fixed directly on the state's config
+    # (rather than going through build_state, which would migrate it away).
+    state.config.balloted_types = list(state.config.balloted_types) + ["LEC"]
+    state.config.fixed = {"BETA": {"LEC": "1"}}
+    state._rebuild()
+    arr = state.top_arrangements()[0]
+    rows = state.selectable_groups(arr.assignment)
+    keys = [(r.module, r.abbrev) for r in rows]
+    assert ("BETA", "LEC") not in keys
 
 
 def test_selectable_groups_excludes_group_collapsing_to_one_slot_sig(delta_json, config):

@@ -35,8 +35,8 @@ live as you tune. The Classes pane lists every group offering more than one
 timeslot — including lectures, which some modules run as two alternative classes
 (a different time, or the same time online). Press `→` to see that group's
 timeslots and `l` to lock one. Locking pins the slot, not the class number, so
-interchangeable twins stay available for the ballot; lectures are never balloted
-and never appear in `ballot.txt`. Press `b` for the ballot view, `s` to save
+interchangeable twins stay available for the ballot; by default lectures are never
+balloted and never appear in `ballot.txt`. Press `b` for the ballot view, `s` to save
 config.yaml, `e` to export the ballot to `ballot.txt`, `c` to copy the selected
 timetable's NUSMods link, `q` to quit.
 

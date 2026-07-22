@@ -230,7 +230,7 @@ class AppState:
         rows.sort(key=lambda r: (DAYS.index(r["sessions"][0].day), r["sessions"][0].start))
         return rows
 
-    def selectable_groups(self, assignment: dict) -> list:
+    def selectable_groups(self, assignment: dict) -> list[SelectableGroup]:
         """Rows for the Classes pane: every offered group with more than one
         distinct timeslot, balloted or not.
 
@@ -243,6 +243,14 @@ class AppState:
             if len({c.slot_sig for c in group.choices}) < 2:
                 continue
             abbrev = LESSON_ABBREV.get(group.lesson_type, group.lesson_type)
+            # prepare_groups (search.py) applies `fixed` first and short-circuits
+            # before ever reading `locked`. A group pinned by `fixed` would still
+            # render here (it can still offer >1 slot_sig) and pressing `l` would
+            # write a `locked` entry that prepare_groups silently ignores — the
+            # row would show locked but the timetable would not move. Excluding
+            # it matches the pane's model: no row when there is nothing to decide.
+            if abbrev in (self.config.fixed.get(group.module) or {}):
+                continue
             choice = assignment.get((group.module, group.lesson_type))
             rows.append(SelectableGroup(
                 module=group.module,
