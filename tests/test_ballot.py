@@ -171,3 +171,17 @@ def test_ranked_options_is_a_prefix_of_all_options(config):
     capped = ranked_options(result, config)
     for key, opts in capped.items():
         assert opts == full[key][: len(opts)]
+
+
+def test_ranked_options_cap_zero(config):
+    """With cap of 0, no groups appear in result dict (keys excluded, not empty lists)."""
+    config.alternatives_per_module = 0
+    options = ranked_options(fake_result(config), config)
+    assert options == {}
+
+
+def test_ranked_options_cap_negative(config):
+    """With negative cap, no groups appear in result dict (keys excluded, not empty lists)."""
+    config.alternatives_per_module = -1
+    options = ranked_options(fake_result(config), config)
+    assert options == {}

@@ -103,10 +103,16 @@ def ranked_options(result, config) -> dict:
 
     This is the "backup choices per balloted group" view. The ballot itself uses
     fill_to_cap, which treats alternatives_per_module as a baseline rather than a
-    ceiling."""
+    ceiling.
+
+    Groups whose capped list is empty are excluded from the result dict's keys.
+    With a cap <= 0, no groups appear (returns empty dict)."""
+    if config.alternatives_per_module <= 0:
+        return {}
     return {
         key: opts[: config.alternatives_per_module]
         for key, opts in all_options(result, config).items()
+        if opts[: config.alternatives_per_module]
     }
 
 
