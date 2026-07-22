@@ -126,9 +126,23 @@ def fill_to_cap(full: dict, config, cap: int = 20) -> dict:
     then hand each remaining slot to whichever group's next unused option scores
     highest. Ties break on (module, lesson_type, class_no) for determinism.
 
+    This function FILLS but never TRIMS: it never raises the total above `cap`
+    (the while-loop stops as soon as total >= cap), but if the baseline alone
+    (config.alternatives_per_module per group, summed across groups) already
+    meets or exceeds `cap`, the loop never runs and this is an exact no-op --
+    the result equals ranked_options' output for the same inputs, which can
+    total more than `cap`. Trimming which entries survive in that case is a
+    separate, deliberately deferred decision; snake() truncates the flattened
+    list to `cap` regardless.
+
+    A negative or zero config.alternatives_per_module is treated as an empty
+    baseline (matching ranked_options' documented semantics), not as a slice
+    that drops trailing options.
+
     Only draws from `full` (the output of all_options), so non-viable footprints
     stay excluded -- every entry is part of some clash-free timetable."""
-    picked = {key: opts[: config.alternatives_per_module] for key, opts in full.items()}
+    baseline_depth = max(config.alternatives_per_module, 0)
+    picked = {key: opts[:baseline_depth] for key, opts in full.items()}
     total = sum(len(opts) for opts in picked.values())
     while total < cap:
         candidates = []

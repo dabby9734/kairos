@@ -266,9 +266,47 @@ def test_fill_to_cap_is_noop_when_already_at_cap(config):
     assert filled == ranked_options(result, config)
 
 
-def test_fill_to_cap_preserves_letters(config):
+def test_fill_to_cap_reuses_option_objects(config):
+    """fill_to_cap must slice/reuse the BallotOption instances from `full` verbatim,
+    never reconstruct them -- letter-position alignment holds trivially for any
+    prefix-taking implementation, so this checks the thing that would actually
+    catch a rebuild: each output option `is` the same object at the same index
+    in the `all_options` input."""
     config.alternatives_per_module = 1
     result = wide_result(config, groups=2, per_group=4)
-    filled = fill_to_cap(all_options(result, config), config, cap=6)
-    for opts in filled.values():
-        assert [o.letter for o in opts] == [chr(ord("A") + i) for i in range(len(opts))]
+    full = all_options(result, config)
+    filled = fill_to_cap(full, config, cap=6)
+    for key, opts in filled.items():
+        for i, o in enumerate(opts):
+            assert o is full[key][i]
+
+
+def test_fill_to_cap_overflowing_baseline_is_a_noop(config):
+    """When the per-group baseline alone (alternatives_per_module * groups) already
+    meets or exceeds `cap`, fill_to_cap's while-loop never executes: it returns
+    exactly what ranked_options returns for the same inputs, even though that total
+    exceeds `cap`. fill_to_cap only FILLS, it never TRIMS -- rebalancing which
+    entries survive the overflow is a separate, deliberately deferred decision;
+    snake() is what truncates the flattened list down to `cap`."""
+    config.alternatives_per_module = 4
+    result = wide_result(config, groups=9, per_group=4)  # 9 x 4 = 36 baseline
+    full = all_options(result, config)
+    filled = fill_to_cap(full, config, cap=20)
+    assert sum(len(v) for v in filled.values()) == 36
+    assert filled == ranked_options(result, config)
+
+
+def test_fill_to_cap_negative_alternatives_per_module_starts_empty(config):
+    """A negative alternatives_per_module must be clamped to an empty baseline
+    (matching ranked_options' <= 0 semantics), not treated as a slice like
+    opts[:-1] that silently drops each group's last-ranked baseline option."""
+    config.alternatives_per_module = -1
+    result = wide_result(config, groups=2, per_group=4)
+    full = all_options(result, config)
+    filled = fill_to_cap(full, config, cap=5)
+    # baseline is empty for every group -- no group starts with opts[:-1]
+    assert sum(len(v) for v in filled.values()) == 5
+    # filling still proceeds by best-remaining-score from an empty start, so the
+    # 5 highest-scoring options overall (M0's top 4, then M1's top 1) are picked
+    assert [o.class_no for o in filled[("M0", "Tutorial")]] == ["00", "01", "02", "03"]
+    assert [o.class_no for o in filled[("M1", "Tutorial")]] == ["00"]
