@@ -63,7 +63,7 @@ def render_week_rich(assignment: dict, colours: dict, preview=None) -> Group:
             preview_days = {p_day for p_day, _start, _end, _online in p_sig}
 
     for day in _render_days(assignment, extra_days=preview_days):
-        # block = (start, end, start_h, end_h, module, abbrev, class_no, venue, online)
+        # block = (start, end, start_h, end_h, module, abbrev, class_no, venue, online, mode)
         blocks = []
         for (module, lesson_type), choice in sorted(assignment.items()):
             abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
@@ -129,7 +129,18 @@ def render_week_rich(assignment: dict, colours: dict, preview=None) -> Group:
                 full = f"{mark}{module} [{abbrev}]"
                 label = (full if len(full) <= width else f"{mark}{module}")[:width].ljust(width)
                 bg, fg = colours.get(module, ("white", "black"))
-                style = f"{fg} on {bg}" + (" dim" if online else "") + (" blink" if mode else "")
+                # Apple Terminal.app ignores SGR 5 (blink). Flash mode adds no
+                # duplicate bar/agenda line, so it needs `reverse` too, to stay
+                # visible there. Preview mode already draws an extra block plus
+                # a "(preview)" agenda line as a fallback signal, so it keeps
+                # plain blink.
+                if mode == "flash":
+                    blink_style = " blink reverse"
+                elif mode == "preview":
+                    blink_style = " blink"
+                else:
+                    blink_style = ""
+                style = f"{fg} on {bg}" + (" dim" if online else "") + blink_style
                 row.append(label, style=style)
                 cursor = span_end
             rows.append(row)

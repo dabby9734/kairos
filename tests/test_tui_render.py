@@ -209,6 +209,10 @@ def test_previewing_current_slot_draws_no_duplicate_bar():
 def test_flashed_slot_blinks_strip_and_agenda():
     # Both the strip and its agenda line carry the blink SGR (5), and the strip
     # keeps CS2030S's own colour pair (black on green -> 30;42) underneath it.
+    # The strip also carries reverse (SGR 7): Apple Terminal.app ignores blink,
+    # so flash mode (which draws no duplicate bar/agenda line as a fallback
+    # signal) needs a second, terminal-independent cue. The agenda line stays
+    # plain blink, since it isn't the primary signal in flash mode.
     assignment = {("CS2030S", "Tutorial"): _choice("CS2030S", "Tutorial", "01", "Monday", 840, 900)}
     sig = frozenset({("Monday", 840, 900, False)})
     colours = module_colours(["CS2030S"])
@@ -220,4 +224,5 @@ def test_flashed_slot_blinks_strip_and_agenda():
     agenda = next(line for line in lines if "TUT[01]" in line)
     for line in (strip, agenda):
         assert "\x1b[5m" in line or ";5m" in line or "\x1b[5;" in line
+    assert "\x1b[7m" in strip or ";7m" in strip or "\x1b[7;" in strip or ";7;" in strip
     assert "30;42" in strip
