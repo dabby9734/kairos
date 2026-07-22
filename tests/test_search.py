@@ -30,6 +30,30 @@ def test_prepare_groups_warns_for_free_nonballoted_group(capsys, beta_json, conf
     out = capsys.readouterr().out
     assert "warning:" in out
     assert "BETA" in out
+    # `locked` is now the key both writers produce, so the advice must name it too
+    assert "no fixed/locked choice" in out
+
+
+def test_prepare_groups_bad_locked_names_locked(alpha_json, config):
+    config.fixed = {}
+    config.locked = {"ALPHA": {"TUT": "99"}}
+    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))
+    with pytest.raises(SystemExit, match="config 'locked'"):
+        prepare_groups(gs, config)
+
+
+def test_prepare_groups_bad_locked_names_fixed_when_migrated(alpha_json, config):
+    """A migrated pin must blame 'fixed' — the key the on-disk config still has.
+
+    migrate_fixed_to_locked rewrites in memory only; the user's file keeps saying
+    `fixed` until they save, so naming 'locked' sends them hunting for a key that
+    is not there (real case: the class vanished between semesters)."""
+    config.fixed = {}
+    config.locked = {"ALPHA": {"TUT": "99"}}
+    config.migrated_from_fixed = {("ALPHA", "TUT")}
+    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))
+    with pytest.raises(SystemExit, match="config 'fixed', migrated to 'locked'"):
+        prepare_groups(gs, config)
 
 
 def test_prepare_groups_bad_fixed(alpha_json, config):

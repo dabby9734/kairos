@@ -33,8 +33,17 @@ def prepare_groups(groups: list, config) -> list:
         if locked_no is not None:
             anchor = next((c for c in group.choices if c.class_no == str(locked_no)), None)
             if anchor is None:
+                # Name the key the USER's file actually carries: migrate_fixed_to_locked
+                # rewrites non-balloted `fixed` pins to `locked` at TUI load, and the
+                # migrated form only reaches disk on save — so until then, pointing at
+                # 'locked' sends them looking for a key config.yaml does not have.
+                origin = (
+                    "'fixed', migrated to 'locked'"
+                    if (group.module, abbrev) in config.migrated_from_fixed
+                    else "'locked'"
+                )
                 raise SystemExit(
-                    f"error: {group.module} {abbrev} class {locked_no} (config 'locked') does not exist"
+                    f"error: {group.module} {abbrev} class {locked_no} (config {origin}) does not exist"
                 )
             sig = anchor.slot_sig
             chosen = [c for c in group.choices if c.slot_sig == sig]
@@ -43,7 +52,7 @@ def prepare_groups(groups: list, config) -> list:
         if len(group.choices) > 1 and abbrev not in config.balloted_types:
             print(
                 f"warning: {group.module} {abbrev} has {len(group.choices)} options "
-                "and no fixed choice; searching over all of them"
+                "and no fixed/locked choice; searching over all of them"
             )
         prepared.append(group)
     return prepared

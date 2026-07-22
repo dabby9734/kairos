@@ -50,6 +50,9 @@ class Config:
     top_n: int
     max_arrangements: int = 50
     locked: dict = field(default_factory=dict)  # code -> dict[abbrev, class_no]
+    # (code, abbrev) pairs that migrate_fixed_to_locked moved out of `fixed`, so
+    # errors can name the key the user's on-disk file still uses. Never persisted.
+    migrated_from_fixed: set = field(default_factory=set)
 
     def difficulty(self, module: str, lesson_type_full: str) -> int:
         spec = self.modules.get(module, 3)
