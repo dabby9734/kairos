@@ -70,6 +70,36 @@ From the 2026-07-15 audit table (see the conversation/audit record):
 - #12 criterion/preference metadata registry, #14 slider debounce + worker, #15 enumeration cap (investigate-first), #16 config.yaml schema docs, #17 unify the two week renderers
 - Direction options D1 (`run` adopts arrangements), D2 (`kairos lock` subcommand), D3 (`run --export/--json`)
 
+## Deferred minors from the lockable-non-balloted-slots feature (2026-07-22, merged `19b0090`)
+
+Raised by per-task or whole-branch review, triaged as non-blocking. None affects
+behaviour; the first two are the ones with real (if small) value.
+
+- **`prepare_groups` warning text is stale** (`kairos/search.py:43-46`): says "no fixed
+  choice" when `locked` is now the key both writers produce. It also fires *inside the
+  running TUI* whenever a user unlocks a non-balloted group — a newly reachable path,
+  since you could not unlock a `fixed` lecture before. Harmless (Textual 8.2.8 wraps the
+  run loop in `redirect_stdout`), but both misworded and invisible. Reword to
+  "no fixed/locked choice".
+- **Post-migration errors name a key the user's file lacks** (`kairos/search.py:36`): if a
+  migrated class number no longer exists (timetable changed between semesters),
+  `prepare_groups` raises `... (config 'locked') does not exist` while the user's
+  `config.yaml` said `fixed`. Diagnosability regression on an error path.
+- **`test_selectable_groups_excludes_group_collapsing_to_one_slot_sig` asserts only
+  absence**: would pass vacuously if the DELTA fixture's group construction broke. Wants a
+  positive precondition (`len(choices) == 2` and one distinct `slot_sig`).
+- **The `selectable_groups` ordering assertion does not discriminate**
+  (`tests/test_tui_state.py`): it sorts on `(module, abbrev)` while the implementation
+  sorts on `(module, lesson_type)`. Verified there are **zero** pairs in `LESSON_ABBREV`
+  where the two orders diverge, so the test cannot fail today whichever key is used.
+- **The `fixed`+`locked` same-key collision path is untested**: manually exercised during
+  review and correct (`fixed` wins the overwrite, balloted entries untouched), but not
+  pinned against regression.
+- **Multi-session rows flatten the session→venue mapping**: a class meeting Mon@A and
+  Wed@B renders `@A/B`. Accepted consequence of the "show all distinct venues" decision
+  (the alternative printed labels that were false for non-representative classes). Watch
+  for label truncation in the Timeslots pane during UAT.
+
 ## Findings considered and rejected
 
 - Full detail-pane re-render on timeslot-preview navigation: bounded to a
