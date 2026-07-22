@@ -387,6 +387,21 @@ def test_selectable_groups_marks_balloted_and_current_class(state):
     assert rows[("BETA", "LEC")].current_class_no == expected
 
 
+def test_selectable_groups_excludes_group_collapsing_to_one_slot_sig(delta_json, config):
+    # DELTA TUT has two classes at the same day/time/online-ness, differing only
+    # by venue -> one slot_sig despite two classes. This is the discriminating
+    # case for the "< 2 distinct slot_sigs" filter: a single-class group would be
+    # excluded trivially, but this proves the filter counts SIGS, not classes.
+    groups = build_groups("DELTA", semester_timetable(delta_json, 1))
+    cfg = copy.deepcopy(config)
+    cfg.fixed, cfg.locked = {}, {}
+    cfg.modules = {"DELTA": {"TUT": 3}}
+    cfg.priority = ["DELTA"]
+    state = AppState.from_parts(cfg, groups)
+    keys = [(r.module, r.abbrev) for r in state.selectable_groups({})]
+    assert ("DELTA", "TUT") not in keys
+
+
 def test_selectable_groups_counts_slots_from_base_groups(state):
     # Locking narrows the PREPARED group to one slot. The row must survive,
     # otherwise the pane row vanishes the instant the user locks it.

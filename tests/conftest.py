@@ -72,6 +72,27 @@ def gamma_json():
 
 
 @pytest.fixture
+def delta_json():
+    """DELTA: one tutorial group with two classes at the SAME day/time/online-ness,
+    differing only by venue. Both collapse to a single slot_sig, so the group has
+    nothing to choose between and must be excluded from selectable_groups — the
+    discriminating case for the "< 2 distinct slot_sigs" filter (as opposed to a
+    group with only one class, which is excluded trivially)."""
+    return {
+        "moduleCode": "DELTA",
+        "semesterData": [
+            {
+                "semester": 1,
+                "timetable": [
+                    lesson("01", "Tutorial", "Wednesday", "1100", "1200"),
+                    lesson("02", "Tutorial", "Wednesday", "1100", "1200", venue="COM1-0202"),
+                ],
+            }
+        ],
+    }
+
+
+@pytest.fixture
 def config():
     from kairos.config import DEFAULT_PREFERENCES, Config, Preferences
 

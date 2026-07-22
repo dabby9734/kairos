@@ -310,12 +310,13 @@ async def test_timeslots_populate_from_highlighted_class(state, tmp_path):
         slot_list.index = 0  # ALPHA Tutorial
         await pilot.pause()
         labels = _timeslot_labels(app)
-        # two offered timeslots: Mon 14:00 (01) and Tue 09:00 (02/03), each
-        # labelled with its venue so slot-sharing classes can be told apart
+        # two offered timeslots: Mon 14:00 (01) and Tue 09:00 (02/03). 02 and 03
+        # share a slot_sig (slot_sig ignores venue) so they collapse into one row;
+        # that row lists every distinct venue its classes use, not just one.
         # (fmt_time renders "1400", not "14:00" — matches the rest of the codebase,
         # e.g. tests/test_output.py's "Mon 1400-1500" for this same fixture)
         assert any("Mon 1400-1500  @COM1-0201 (01)" in t for t in labels)
-        assert any("Tue 0900-1000  @COM1-0201 (02/03)" in t for t in labels)
+        assert any("Tue 0900-1000  @COM1-0201/COM1-0202 (02/03)" in t for t in labels)
         assert "ALPHA TUT" in str(app.query_one("#timeslot-list", ListView).border_title)
 
 

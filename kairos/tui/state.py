@@ -207,7 +207,10 @@ class AppState:
         """Distinct offered timeslots for a class, from the FULL offered set
         (base_groups, so a current lock does not narrow it). One dict per distinct
         slot_sig, sorted by (day, start): sig, class_nos (sorted), sessions (a
-        representative choice's sessions), rep (representative class number)."""
+        representative choice's sessions), rep (representative class number),
+        venues (sorted distinct venues across every class in the row — slot_sig
+        deliberately ignores venue, so classes differing only by venue collapse
+        into one row and all of their venues must be shown)."""
         group = self._base_group(module, lesson_type)
         if group is None:
             return []
@@ -222,6 +225,7 @@ class AppState:
                 "class_nos": [c.class_no for c in choices],
                 "sessions": choices[0].sessions,
                 "rep": choices[0].class_no,
+                "venues": sorted({s.venue for c in choices for s in c.sessions}),
             })
         rows.sort(key=lambda r: (DAYS.index(r["sessions"][0].day), r["sessions"][0].start))
         return rows

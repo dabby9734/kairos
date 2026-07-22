@@ -71,17 +71,19 @@ def _render_bids(arrangement) -> Text:
 
 
 def _fmt_timeslot(row) -> str:
-    """Label one offered_timeslots row. Day/time alone is not enough: two classes
-    can share a slot and differ only by venue or physical-vs-online (e.g. CS1231S
-    lecture 1 @UT-AUD1 vs 2 @E-Learn_C), which would otherwise render identically.
-    Reuses the `~` online marker from tui.render."""
+    """Label one offered_timeslots row. Day/time alone is not enough: a class can
+    be offered physically and online at the same day/time (e.g. CS1231S lecture 1
+    @UT-AUD1 vs 2 @E-Learn_C), which only the `~` online marker (reused from
+    tui.render) distinguishes. slot_sig deliberately ignores venue, so classes
+    differing only by venue collapse into a single row here — the venue segment
+    lists every venue used by the row's classes, not just the representative's."""
     sessions = row["sessions"]
     times = ", ".join(
         f"{s.day[:3]} {fmt_time(s.start)}-{fmt_time(s.end)}"
         for s in sorted(sessions, key=lambda s: (DAYS.index(s.day), s.start))
     )
     mark = "~" if any(s.online for s in sessions) else " "
-    return f"{mark}{times}  @{sessions[0].venue}"
+    return f"{mark}{times}  @{'/'.join(row['venues'])}"
 
 
 class KairosApp(App):
