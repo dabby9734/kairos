@@ -6,6 +6,11 @@ from .model import LESSON_ABBREV
 
 BALLOT_TYPE_ORDER = ["Tutorial", "Sectional Teaching", "Recitation", "Laboratory"]
 
+# NUS's documented per-round maximum for ranked tutorial/lab slots in a single
+# E-Registration ballot. If this ever changes, update it here only -- every
+# default and every user-facing message derives from this one constant.
+BALLOT_CAP = 20
+
 
 @dataclass
 class BallotOption:
@@ -107,16 +112,13 @@ def ranked_options(result, config) -> dict:
 
     Groups whose capped list is empty are excluded from the result dict's keys.
     With a cap <= 0, no groups appear (returns empty dict)."""
+    full = all_options(result, config)
     if config.alternatives_per_module <= 0:
         return {}
-    return {
-        key: opts[: config.alternatives_per_module]
-        for key, opts in all_options(result, config).items()
-        if opts[: config.alternatives_per_module]
-    }
+    return {key: opts[: config.alternatives_per_module] for key, opts in full.items()}
 
 
-def fill_to_cap(full: dict, config, cap: int = 20) -> dict:
+def fill_to_cap(full: dict, config, cap: int = BALLOT_CAP) -> dict:
     """Extend the per-group baseline up to `cap` total entries, best score first.
 
     NUS allows 20 ranked tutorial/lab slots as a GLOBAL budget across all enrolled
@@ -130,8 +132,11 @@ def fill_to_cap(full: dict, config, cap: int = 20) -> dict:
     (the while-loop stops as soon as total >= cap), but if the baseline alone
     (config.alternatives_per_module per group, summed across groups) already
     meets or exceeds `cap`, the loop never runs and this is an exact no-op --
-    the result equals ranked_options' output for the same inputs, which can
-    total more than `cap`. Trimming which entries survive in that case is a
+    for config.alternatives_per_module >= 1, the result equals ranked_options'
+    output for the same inputs, which can total more than `cap`. (For <= 0,
+    ranked_options returns {} while this returns every key mapped to [];
+    both are the empty-baseline case, they just represent it differently.)
+    Trimming which entries survive in that case is a
     separate, deliberately deferred decision; snake() truncates the flattened
     list to `cap` regardless.
 
@@ -159,7 +164,7 @@ def fill_to_cap(full: dict, config, cap: int = 20) -> dict:
     return picked
 
 
-def snake(options_by_group: dict, config, cap: int = 20) -> list:
+def snake(options_by_group: dict, config, cap: int = BALLOT_CAP) -> list:
     def column_key(key):
         module, lesson_type = key
         module_rank = (
@@ -183,6 +188,6 @@ def snake(options_by_group: dict, config, cap: int = 20) -> list:
     return entries[:cap]
 
 
-def shortfall(entries: list, cap: int = 20) -> int:
+def shortfall(entries: list, cap: int = BALLOT_CAP) -> int:
     """Ballot slots left unused. Non-zero means fewer than `cap` viable options exist."""
     return max(0, cap - len(entries))

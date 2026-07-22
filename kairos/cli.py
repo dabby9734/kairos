@@ -154,9 +154,9 @@ def cmd_run(args) -> None:
     missing = ballot.shortfall(entries)
     if missing:
         print(
-            f"\nwarning: ballot uses only {len(entries)} of 20 slots — no further "
-            "clash-free options exist. NUS notes a shorter list may mean not getting "
-            "a tutorial allocated at all."
+            f"\nwarning: ballot uses only {len(entries)} of {ballot.BALLOT_CAP} slots — "
+            "no further clash-free options exist. NUS notes a shorter list may mean not "
+            "getting a tutorial allocated at all."
         )
 
 

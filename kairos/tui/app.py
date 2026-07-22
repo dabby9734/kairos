@@ -357,8 +357,8 @@ class KairosApp(App):
         missing = ballot.shortfall(entries)
         if missing:
             self.notify(
-                f"wrote {out} — only {len(entries)} of 20 ballot slots used "
-                "(no further clash-free options)",
+                f"wrote {out} — only {len(entries)} of {ballot.BALLOT_CAP} ballot slots "
+                "used (no further clash-free options)",
                 severity="warning",
             )
         else:
