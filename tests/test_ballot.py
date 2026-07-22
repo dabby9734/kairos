@@ -1,6 +1,6 @@
 import pytest
 
-from kairos.ballot import BallotOption, all_options, ranked_options, snake
+from kairos.ballot import BallotOption, all_options, fill_to_cap, ranked_options, snake
 from kairos.model import Session
 from kairos.search import SearchResult
 
@@ -185,3 +185,90 @@ def test_ranked_options_cap_negative(config):
     config.alternatives_per_module = -1
     options = ranked_options(fake_result(config), config)
     assert options == {}
+
+
+def wide_result(config, groups=6, per_group=5):
+    """`groups` balloted tutorial groups, each with `per_group` viable single-choice
+    footprints. Scores descend within a group and across groups, so the
+    best-remaining-score fill order is fully determined."""
+    from kairos.model import Choice
+
+    members, best = {}, {}
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    for g in range(groups):
+        module = f"M{g}"
+        fp_members = {}
+        for i in range(per_group):
+            c = Choice(module, "Tutorial", f"{i:02d}", (sess(days[i % len(days)], 600 + i * 60, 660 + i * 60),))
+            fp_members[c.footprint] = [c]
+            # group 0 scores highest; within a group, option 0 scores highest
+            best[(module, "Tutorial", c.footprint)] = 100.0 - g * 10 - i
+        members[(module, "Tutorial")] = fp_members
+    return SearchResult(top=[], best_by_footprint=best, members=members, evaluated=0)
+
+
+def test_fill_to_cap_reaches_20(config):
+    config.alternatives_per_module = 2
+    result = wide_result(config)  # 6 groups x 5 options = 30 available
+    full = all_options(result, config)
+    assert sum(len(v) for v in ranked_options(result, config).values()) == 12  # 6 x 2
+    filled = fill_to_cap(full, config)
+    assert sum(len(v) for v in filled.values()) == 20
+
+
+def test_fill_to_cap_awards_slots_by_best_remaining_score(config):
+    """The discriminating case: the extra slot must go to the group with the best
+    NEXT option globally, not to the first group in iteration order."""
+    config.alternatives_per_module = 1
+
+    def o(module, no, letter, score):
+        return BallotOption(module, "Tutorial", no, letter, score, (sess(),), [])
+
+    # X's second option (70) is worse than Y's second (80), even though X's first
+    # (100) beats Y's first (90). A round-robin or first-group-wins fill would pick
+    # X["02"]; best-remaining-score must pick Y["02"].
+    full = {
+        ("X", "Tutorial"): [o("X", "01", "A", 100.0), o("X", "02", "B", 70.0)],
+        ("Y", "Tutorial"): [o("Y", "01", "A", 90.0), o("Y", "02", "B", 80.0)],
+    }
+    filled = fill_to_cap(full, config, cap=3)
+    assert [e.class_no for e in filled[("Y", "Tutorial")]] == ["01", "02"]
+    assert [e.class_no for e in filled[("X", "Tutorial")]] == ["01"]
+
+
+def test_fill_to_cap_concentrates_on_the_strongest_group(config):
+    """Documents an accepted consequence of best-remaining-score: when one group's
+    whole option list outscores another's, it takes every extra slot. Spreading depth
+    by contest risk instead is the separate P2 item in plans/README.md."""
+    config.alternatives_per_module = 1
+    result = wide_result(config, groups=3, per_group=3)  # M0: 100,99,98  M1: 90,89,88
+    filled = fill_to_cap(all_options(result, config), config, cap=5)
+    assert [e.class_no for e in filled[("M0", "Tutorial")]] == ["00", "01", "02"]
+    assert [e.class_no for e in filled[("M1", "Tutorial")]] == ["00"]
+    assert [e.class_no for e in filled[("M2", "Tutorial")]] == ["00"]
+
+
+def test_fill_to_cap_stops_when_options_exhausted(config):
+    config.alternatives_per_module = 1
+    result = fake_result(config)  # only 5 viable options exist in total
+    filled = fill_to_cap(all_options(result, config), config)
+    assert sum(len(v) for v in filled.values()) == 5
+    # and the non-viable ALPHA tutorial 04 is still excluded
+    assert "04" not in [o.class_no for o in filled[("ALPHA", "Tutorial")]]
+
+
+def test_fill_to_cap_is_noop_when_already_at_cap(config):
+    config.alternatives_per_module = 4
+    result = wide_result(config, groups=5, per_group=4)  # 5 x 4 = 20 baseline
+    full = all_options(result, config)
+    filled = fill_to_cap(full, config)
+    assert sum(len(v) for v in filled.values()) == 20
+    assert filled == ranked_options(result, config)
+
+
+def test_fill_to_cap_preserves_letters(config):
+    config.alternatives_per_module = 1
+    result = wide_result(config, groups=2, per_group=4)
+    filled = fill_to_cap(all_options(result, config), config, cap=6)
+    for opts in filled.values():
+        assert [o.letter for o in opts] == [chr(ord("A") + i) for i in range(len(opts))]

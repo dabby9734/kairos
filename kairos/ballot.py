@@ -116,6 +116,35 @@ def ranked_options(result, config) -> dict:
     }
 
 
+def fill_to_cap(full: dict, config, cap: int = 20) -> dict:
+    """Extend the per-group baseline up to `cap` total entries, best score first.
+
+    NUS allows 20 ranked tutorial/lab slots as a GLOBAL budget across all enrolled
+    courses, and states that a shorter list "may also mean that a student may not
+    be successful in getting a tutorial allocated at all". So an unused slot is a
+    free lottery ticket thrown away: start at alternatives_per_module per group,
+    then hand each remaining slot to whichever group's next unused option scores
+    highest. Ties break on (module, lesson_type, class_no) for determinism.
+
+    Only draws from `full` (the output of all_options), so non-viable footprints
+    stay excluded -- every entry is part of some clash-free timetable."""
+    picked = {key: opts[: config.alternatives_per_module] for key, opts in full.items()}
+    total = sum(len(opts) for opts in picked.values())
+    while total < cap:
+        candidates = []
+        for key, opts in full.items():
+            depth = len(picked[key])
+            if depth < len(opts):
+                option = opts[depth]
+                candidates.append(((-option.best_score, key[0], key[1], option.class_no), key, option))
+        if not candidates:
+            break  # every group exhausted: fewer than `cap` viable options exist
+        _, key, option = min(candidates, key=lambda c: c[0])
+        picked[key] = picked[key] + [option]
+        total += 1
+    return picked
+
+
 def snake(options_by_group: dict, config, cap: int = 20) -> list:
     def column_key(key):
         module, lesson_type = key
