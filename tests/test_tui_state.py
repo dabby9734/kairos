@@ -68,6 +68,21 @@ def test_ballot_helpers(state):
     assert isinstance(snake, list)
 
 
+def test_ballot_snake_fills_beyond_the_per_group_cap(state):
+    """The export path must apply the fill, not just the per-group cap."""
+    from kairos.ballot import all_options, ranked_options
+
+    state.config.alternatives_per_module = 1
+    full = all_options(state.result, state.config)
+    # Precondition: at least one group has an unused option, otherwise the strict
+    # assertion below would be unsatisfiable and the test would be meaningless.
+    assert any(len(opts) > 1 for opts in full.values())
+    capped_total = sum(len(v) for v in ranked_options(state.result, state.config).values())
+    # STRICT >: `>=` would pass even if fill_to_cap were never called, since the
+    # snake can only ever grow relative to the capped view.
+    assert len(state.ballot_snake()) > capped_total
+
+
 def test_top_arrangements_returns_arrangements(state):
     from kairos.search import Arrangement, SlotBid
 
@@ -379,7 +394,11 @@ def test_selectable_groups_lists_multi_slot_groups_including_lectures(state):
     assert ("BETA", "LEC") in keys
     # ALPHA LEC has a single class (one Mon+Wed bundle) -> nothing to choose
     assert ("ALPHA", "LEC") not in keys
-    assert keys == sorted(keys)  # stable (module, lesson_type) ordering
+    # Ordering is on (module, lesson_type), NOT (module, abbrev) — assert the key
+    # the implementation actually sorts by. (Sorting `keys` here would not
+    # discriminate: no pair in LESSON_ABBREV makes the two orders diverge.)
+    order = [(r.module, r.lesson_type) for r in rows]
+    assert order == sorted(order)
 
 
 def test_selectable_groups_marks_balloted_and_current_class(state):
@@ -420,6 +439,11 @@ def test_selectable_groups_excludes_group_collapsing_to_one_slot_sig(delta_json,
     # case for the "< 2 distinct slot_sigs" filter: a single-class group would be
     # excluded trivially, but this proves the filter counts SIGS, not classes.
     groups = build_groups("DELTA", semester_timetable(delta_json, 1))
+    # Precondition: without this the assertion below passes vacuously if the
+    # fixture's group construction ever changes shape (e.g. collapses to one class).
+    tut = next(g for g in groups if g.module == "DELTA" and g.lesson_type == "Tutorial")
+    assert len(tut.choices) == 2
+    assert len({c.slot_sig for c in tut.choices}) == 1
     cfg = copy.deepcopy(config)
     cfg.fixed, cfg.locked = {}, {}
     cfg.modules = {"DELTA": {"TUT": 3}}

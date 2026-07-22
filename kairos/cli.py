@@ -145,11 +145,19 @@ def cmd_run(args) -> None:
         print(output.share_url(assignment, config.semester))
         print()
 
-    options = ballot.ranked_options(result, config)
+    full = ballot.all_options(result, config)
     print("=== backup choices per balloted group ===")
-    print(output.render_options(options))
+    print(output.render_options(ballot.ranked_options(result, config)))
+    entries = ballot.snake(ballot.fill_to_cap(full, config), config)
     print("\n=== ballot ranking (snake order, cap 20) ===")
-    print(output.render_snake(ballot.snake(options, config)))
+    print(output.render_snake(entries))
+    missing = ballot.shortfall(entries)
+    if missing:
+        print(
+            f"\nwarning: ballot uses only {len(entries)} of 20 slots — no further "
+            "clash-free options exist. NUS notes a shorter list may mean not getting "
+            "a tutorial allocated at all."
+        )
 
 
 def cmd_tui(args) -> None:

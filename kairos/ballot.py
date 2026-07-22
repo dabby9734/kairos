@@ -181,3 +181,8 @@ def snake(options_by_group: dict, config, cap: int = 20) -> list:
             row.reverse()
         entries.extend(row)
     return entries[:cap]
+
+
+def shortfall(entries: list, cap: int = 20) -> int:
+    """Ballot slots left unused. Non-zero means fewer than `cap` viable options exist."""
+    return max(0, cap - len(entries))

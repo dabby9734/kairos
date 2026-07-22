@@ -1,6 +1,6 @@
 import pytest
 
-from kairos.ballot import BallotOption, all_options, fill_to_cap, ranked_options, snake
+from kairos.ballot import BallotOption, all_options, fill_to_cap, ranked_options, shortfall, snake
 from kairos.model import Session
 from kairos.search import SearchResult
 
@@ -310,3 +310,10 @@ def test_fill_to_cap_negative_alternatives_per_module_starts_empty(config):
     # 5 highest-scoring options overall (M0's top 4, then M1's top 1) are picked
     assert [o.class_no for o in filled[("M0", "Tutorial")]] == ["00", "01", "02", "03"]
     assert [o.class_no for o in filled[("M1", "Tutorial")]] == ["00"]
+
+
+def test_shortfall(config):
+    assert shortfall([]) == 20
+    assert shortfall([opt("A", "Tutorial", "01", "A")] * 18) == 2
+    assert shortfall([opt("A", "Tutorial", "01", "A")] * 20) == 0
+    assert shortfall([opt("A", "Tutorial", "01", "A")] * 25) == 0  # never negative

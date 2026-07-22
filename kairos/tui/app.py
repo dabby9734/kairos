@@ -12,6 +12,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Label, ListItem, ListView, Static, TabbedContent, TabPane
 
+from .. import ballot
 from ..model import DAYS, LESSON_ABBREV, fmt_clock, fmt_time
 from ..output import class_warnings, render_breakdown, render_snake, share_url
 from .render import module_colours, render_week_rich
@@ -351,8 +352,17 @@ class KairosApp(App):
 
     def action_export_ballot(self) -> None:
         out = self.config_path.parent / "ballot.txt"
-        out.write_text(render_snake(self.state.ballot_snake()))
-        self.notify(f"wrote {out}")
+        entries = self.state.ballot_snake()
+        out.write_text(render_snake(entries))
+        missing = ballot.shortfall(entries)
+        if missing:
+            self.notify(
+                f"wrote {out} — only {len(entries)} of 20 ballot slots used "
+                "(no further clash-free options)",
+                severity="warning",
+            )
+        else:
+            self.notify(f"wrote {out}")
 
     def action_show_tab(self, tab_id: str) -> None:
         tabs = self.query_one(TabbedContent)
