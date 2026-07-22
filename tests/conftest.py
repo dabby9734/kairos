@@ -53,6 +53,46 @@ def beta_json():
 
 
 @pytest.fixture
+def gamma_json():
+    """GAMMA: two lecture classes at IDENTICAL times, one physical one online
+    (the CS1231S shape). Their slot_sigs differ only by `online`, so they are
+    two distinct rows that a day/time-only label cannot tell apart."""
+    return {
+        "moduleCode": "GAMMA",
+        "semesterData": [
+            {
+                "semester": 1,
+                "timetable": [
+                    lesson("1", "Lecture", "Thursday", "1200", "1400", venue="UT-AUD1"),
+                    lesson("2", "Lecture", "Thursday", "1200", "1400", venue="E-Learn_C"),
+                ],
+            }
+        ],
+    }
+
+
+@pytest.fixture
+def delta_json():
+    """DELTA: one tutorial group with two classes at the SAME day/time/online-ness,
+    differing only by venue. Both collapse to a single slot_sig, so the group has
+    nothing to choose between and must be excluded from selectable_groups — the
+    discriminating case for the "< 2 distinct slot_sigs" filter (as opposed to a
+    group with only one class, which is excluded trivially)."""
+    return {
+        "moduleCode": "DELTA",
+        "semesterData": [
+            {
+                "semester": 1,
+                "timetable": [
+                    lesson("01", "Tutorial", "Wednesday", "1100", "1200"),
+                    lesson("02", "Tutorial", "Wednesday", "1100", "1200", venue="COM1-0202"),
+                ],
+            }
+        ],
+    }
+
+
+@pytest.fixture
 def config():
     from kairos.config import DEFAULT_PREFERENCES, Config, Preferences
 

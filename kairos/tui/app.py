@@ -70,21 +70,33 @@ def _render_bids(arrangement) -> Text:
     return Text("\n".join(lines), style="dim")
 
 
-def _fmt_sessions(sessions) -> str:
-    return ", ".join(
+def _fmt_timeslot(row: dict) -> str:
+    """Label one offered_timeslots row. Day/time alone is not enough: a class can
+    be offered physically and online at the same day/time (e.g. CS1231S lecture 1
+    @UT-AUD1 vs 2 @E-Learn_C), which day/time alone cannot show — the `~` online
+    marker (reused from tui.render) and the venue segment each distinguish it,
+    since Session.online is derived from the venue string (model.py:63-65), so an
+    online class always carries an E-Learn* venue. slot_sig deliberately ignores
+    venue, so classes differing only by venue collapse into a single row here —
+    the venue segment lists every venue used by the row's classes, not just the
+    representative's."""
+    sessions = row["sessions"]
+    times = ", ".join(
         f"{s.day[:3]} {fmt_time(s.start)}-{fmt_time(s.end)}"
         for s in sorted(sessions, key=lambda s: (DAYS.index(s.day), s.start))
     )
+    mark = "~" if any(s.online for s in sessions) else " "
+    return f"{mark}{times}  @{'/'.join(row['venues'])}"
 
 
 class KairosApp(App):
     CSS = """
     #controls { width: 42; }
     #results { width: 1fr; }
-    #top-row { height: 30%; }
+    #top-row { height: 20%; }
     #tt-list { width: 45%; border: round $panel; border-title-color: $text; }
     #warnings { width: 1fr; border: round $panel; border-title-color: $text; }
-    #classes-row { height: 15%; }
+    #classes-row { height: 20%; }
     #slot-list { width: 45%; border: round $panel; border-title-color: $text; }
     #timeslot-list { width: 1fr; border: round $panel; border-title-color: $text; }
     #detail-scroll { height: 1fr; }
@@ -115,6 +127,7 @@ class KairosApp(App):
         self.selected = 0
         self.ballot_mode = False
         self._timeslots = []
+        self._rows = []
         self._current_class = None
         self.colours = module_colours(list(state.config.modules))
 
@@ -198,44 +211,42 @@ class KairosApp(App):
         prev = slot_list.index
         with self.prevent(ListView.Highlighted):
             slot_list.clear()
+            self._rows = []
             top = self.state.top_arrangements()
             if top:
-                arr = top[self.selected]
-                for bid in arr.bids:
-                    abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
-                    class_no = arr.assignment[(bid.module, bid.lesson_type)].class_no
-                    lock = "🔒 " if self.state.is_locked(bid.module, abbrev) else ""
-                    slot_list.append(ListItem(Label(f"{lock}{bid.module} {abbrev} → {class_no}")))
+                self._rows = self.state.selectable_groups(top[self.selected].assignment)
+                for row in self._rows:
+                    lock = "🔒 " if row.locked else ""
+                    tag = "  ·ballot" if row.balloted else ""
+                    slot_list.append(ListItem(Label(
+                        f"{lock}{row.module} {row.abbrev} → {row.current_class_no}{tag}"
+                    )))
             if slot_list.children and prev is not None:
                 slot_list.index = min(prev, len(slot_list.children) - 1)
 
     def _populate_timeslots(self) -> None:
         tlist = self.query_one("#timeslot-list", ListView)
         slot_list = self.query_one("#slot-list", ListView)
-        top = self.state.top_arrangements()
         self._timeslots = []
         self._current_class = None
         with self.prevent(ListView.Highlighted):
             tlist.clear()
             tlist.border_title = "Timeslots"
-            if top and slot_list.index is not None:
-                arr = top[self.selected]
-                if slot_list.index < len(arr.bids):
-                    bid = arr.bids[slot_list.index]
-                    self._current_class = (bid.module, bid.lesson_type)
-                    abbrev = LESSON_ABBREV.get(bid.lesson_type, bid.lesson_type)
-                    tlist.border_title = f"Timeslots: {bid.module} {abbrev}"
-                    self._timeslots = self.state.offered_timeslots(bid.module, bid.lesson_type)
-                    locked = self.state.locked_sig(bid.module, bid.lesson_type)
-                    locked_idx = 0
-                    for i, row in enumerate(self._timeslots):
-                        mark = "🔒 " if row["sig"] == locked else ""
-                        label = f"{mark}{_fmt_sessions(row['sessions'])} ({'/'.join(row['class_nos'])})"
-                        tlist.append(ListItem(Label(label)))
-                        if row["sig"] == locked:
-                            locked_idx = i
-                    if self._timeslots:
-                        tlist.index = locked_idx
+            if slot_list.index is not None and 0 <= slot_list.index < len(self._rows):
+                row = self._rows[slot_list.index]
+                self._current_class = (row.module, row.lesson_type)
+                tlist.border_title = f"Timeslots: {row.module} {row.abbrev}"
+                self._timeslots = self.state.offered_timeslots(row.module, row.lesson_type)
+                locked = self.state.locked_sig(row.module, row.lesson_type)
+                locked_idx = 0
+                for i, slot in enumerate(self._timeslots):
+                    mark = "🔒 " if slot["sig"] == locked else ""
+                    label = f"{mark}{_fmt_timeslot(slot)} ({'/'.join(slot['class_nos'])})"
+                    tlist.append(ListItem(Label(label)))
+                    if slot["sig"] == locked:
+                        locked_idx = i
+                if self._timeslots:
+                    tlist.index = locked_idx
 
     def _refresh_detail(self) -> None:
         detail = self.query_one("#detail", Static)

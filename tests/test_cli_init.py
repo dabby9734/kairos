@@ -74,8 +74,9 @@ def test_cmd_init_writes_config(tmp_path, monkeypatch, alpha_json, beta_json):
     assert written["semester"] == 1
     assert written["modules"]["ALPHA"]["difficulty"] == {"LEC": 2, "TUT": 4}
     assert written["modules"]["BETA"]["difficulty"] == {"LAB": 3, "LEC": 1}
-    # BETA has 2 lecture groups and a URL pick -> fixed; ALPHA has 1 lecture group -> not fixed
-    assert written["fixed"] == {"BETA": {"LEC": "1"}}
+    # BETA has 2 lecture groups and a URL pick -> locked; ALPHA has 1 lecture group -> not locked
+    assert written["fixed"] == {}
+    assert written["locked"] == {"BETA": {"LEC": "1"}}
     assert written["priority"] == ["BETA", "ALPHA"]
     assert written["balloted_types"] == ["TUT", "LAB", "REC", "SEC"]
     assert written["preferences"]["weights"]["free_days"] == 4
@@ -88,3 +89,23 @@ def test_cmd_init_refuses_overwrite_without_confirmation(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         main(["--config", str(config_path), "init", SHARE_URL])
     assert config_path.read_text() == "existing: true"
+
+
+def test_init_writes_locked_for_non_balloted_picks(tmp_path, monkeypatch, alpha_json, beta_json):
+    import yaml
+
+    from kairos.cli import main
+
+    fixtures = {"ALPHA": alpha_json, "BETA": beta_json}
+    monkeypatch.setattr("kairos.cli.api.fetch_module", lambda ay, code, cache: fixtures[code])
+    monkeypatch.setattr("builtins.input", lambda *a: "")  # accept every default
+    config_path = tmp_path / "config.yaml"
+    url = "https://nusmods.com/timetable/sem-1/share?ALPHA=TUT:01,LEC:1&BETA=LAB:L2,LEC:1"
+    main([
+        "--config", str(config_path),
+        "--cache-dir", str(tmp_path / "cache"),
+        "init", url, "--acad-year", "2026-2027",
+    ])
+    written = yaml.safe_load(config_path.read_text())
+    assert written["locked"] == {"BETA": {"LEC": "1"}}
+    assert written["fixed"] == {}

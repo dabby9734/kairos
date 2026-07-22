@@ -364,3 +364,78 @@ def test_locked_sig_none_then_set(state):
     assert state.set_lock("ALPHA", "TUT", "01") is True
     sig = state.locked_sig("ALPHA", "Tutorial")
     assert sig == frozenset({("Monday", 840, 900, False)})
+
+
+def test_selectable_groups_lists_multi_slot_groups_including_lectures(state):
+    # The default config fixture pins BETA LEC via `fixed` — clear it first so
+    # this test exercises the "unfixed, genuinely selectable" case rather than
+    # the excluded-fixed-group case (covered separately).
+    state.config.fixed = {}
+    state._rebuild()
+    arr = state.top_arrangements()[0]
+    rows = state.selectable_groups(arr.assignment)
+    keys = [(r.module, r.abbrev) for r in rows]
+    # BETA LEC has two classes (Fri online / Thu physical) -> selectable
+    assert ("BETA", "LEC") in keys
+    # ALPHA LEC has a single class (one Mon+Wed bundle) -> nothing to choose
+    assert ("ALPHA", "LEC") not in keys
+    assert keys == sorted(keys)  # stable (module, lesson_type) ordering
+
+
+def test_selectable_groups_marks_balloted_and_current_class(state):
+    state.config.fixed = {}  # see note above
+    state._rebuild()
+    arr = state.top_arrangements()[0]
+    rows = {(r.module, r.abbrev): r for r in state.selectable_groups(arr.assignment)}
+    assert rows[("ALPHA", "TUT")].balloted is True
+    assert rows[("BETA", "LEC")].balloted is False
+    # current class number is read off the selected arrangement's assignment
+    expected = arr.assignment[("BETA", "Lecture")].class_no
+    assert rows[("BETA", "LEC")].current_class_no == expected
+
+
+def test_selectable_groups_excludes_fixed_group_even_with_multiple_slots(state):
+    # Finding 1: prepare_groups applies `fixed` before ever reading `locked` and
+    # short-circuits, so a group pinned by `fixed` must not render a pane row —
+    # pressing `l` on it would write a `locked` entry that is silently ignored,
+    # and the row would falsely show as locked while the timetable never moves.
+    #
+    # migrate_fixed_to_locked (tui/startup.py) clears non-balloted `fixed`
+    # entries at TUI load, so the surviving real-world case is a balloted
+    # hand-written pin. Model that here: BETA LEC is not balloted by default, so
+    # mark it balloted and set config.fixed directly on the state's config
+    # (rather than going through build_state, which would migrate it away).
+    state.config.balloted_types = list(state.config.balloted_types) + ["LEC"]
+    state.config.fixed = {"BETA": {"LEC": "1"}}
+    state._rebuild()
+    arr = state.top_arrangements()[0]
+    rows = state.selectable_groups(arr.assignment)
+    keys = [(r.module, r.abbrev) for r in rows]
+    assert ("BETA", "LEC") not in keys
+
+
+def test_selectable_groups_excludes_group_collapsing_to_one_slot_sig(delta_json, config):
+    # DELTA TUT has two classes at the same day/time/online-ness, differing only
+    # by venue -> one slot_sig despite two classes. This is the discriminating
+    # case for the "< 2 distinct slot_sigs" filter: a single-class group would be
+    # excluded trivially, but this proves the filter counts SIGS, not classes.
+    groups = build_groups("DELTA", semester_timetable(delta_json, 1))
+    cfg = copy.deepcopy(config)
+    cfg.fixed, cfg.locked = {}, {}
+    cfg.modules = {"DELTA": {"TUT": 3}}
+    cfg.priority = ["DELTA"]
+    state = AppState.from_parts(cfg, groups)
+    keys = [(r.module, r.abbrev) for r in state.selectable_groups({})]
+    assert ("DELTA", "TUT") not in keys
+
+
+def test_selectable_groups_counts_slots_from_base_groups(state):
+    # Locking narrows the PREPARED group to one slot. The row must survive,
+    # otherwise the pane row vanishes the instant the user locks it.
+    state.config.fixed = {}
+    state._rebuild()
+    assert state.set_lock("BETA", "LAB", "L1")
+    arr = state.top_arrangements()[0]
+    rows = {(r.module, r.abbrev): r for r in state.selectable_groups(arr.assignment)}
+    assert ("BETA", "LAB") in rows
+    assert rows[("BETA", "LAB")].locked is True

@@ -70,7 +70,7 @@ def cmd_init(args) -> None:
     cache_dir = Path(args.cache_dir)
 
     modules_cfg: dict = {}
-    fixed: dict = {}
+    locked: dict = {}
     for code, picks in selections.items():
         data = api.fetch_module(acad_year, code, cache_dir)
         groups = api.build_groups(code, api.semester_timetable(data, semester))
@@ -80,7 +80,8 @@ def cmd_init(args) -> None:
             difficulty[abbrev] = _prompt_difficulty(code, abbrev)
             if abbrev not in DEFAULT_BALLOTED and len(group.choices) > 1:
                 if abbrev in picks:
-                    fixed.setdefault(code, {})[abbrev] = picks[abbrev]
+                    # `locked` pins the slot but stays switchable in the TUI
+                    locked.setdefault(code, {})[abbrev] = picks[abbrev]
                 else:
                     print(
                         f"note: {code} {abbrev} has {len(group.choices)} options and no pick "
@@ -102,7 +103,8 @@ def cmd_init(args) -> None:
         "semester": semester,
         "balloted_types": list(DEFAULT_BALLOTED),
         "modules": modules_cfg,
-        "fixed": fixed,
+        "fixed": {},
+        "locked": locked,
         "priority": priority,
         "preferences": DEFAULT_PREFERENCES,
         "alternatives_per_module": 4,

@@ -89,9 +89,9 @@ def test_init_then_run_roundtrip(tmp_path, monkeypatch, capsys, alpha_json, beta
     fixtures = {"ALPHA": alpha_json, "BETA": beta_json, "GAMMA": gamma_json}
     monkeypatch.setattr("kairos.cli.api.fetch_module", lambda ay, code, cache: fixtures[code])
 
-    # BETA gets a LEC pick (2 lecture groups) so it's fixed; ALPHA has only 1
-    # LEC group so it's never fixed regardless of the pick; GAMMA's REC/LAB
-    # are balloted types so they're never fixed even though unpicked.
+    # BETA gets a LEC pick (2 lecture groups) so it's locked; ALPHA has only 1
+    # LEC group so it's never locked regardless of the pick; GAMMA's REC/LAB
+    # are balloted types so they're never locked even though unpicked.
     share_url = (
         "https://nusmods.com/timetable/sem-1/share?"
         "ALPHA=TUT:01,LEC:1&BETA=LAB:L2,LEC:1&GAMMA="
@@ -119,7 +119,8 @@ def test_init_then_run_roundtrip(tmp_path, monkeypatch, capsys, alpha_json, beta
     capsys.readouterr()  # discard init's own output
 
     written = yaml.safe_load(config_path.read_text())
-    assert written["fixed"] == {"BETA": {"LEC": "1"}}
+    assert written["fixed"] == {}
+    assert written["locked"] == {"BETA": {"LEC": "1"}}
 
     main(["run", "--config", str(config_path), "--cache-dir", str(cache_dir)])
     out = capsys.readouterr().out

@@ -58,6 +58,13 @@ They are separated.
 - Groups with exactly one distinct slot are omitted — there is nothing to choose, and an
   inert row that ignores `l` is noise.
 
+- **Groups pinned by `fixed` are also omitted**, even if they still offer more than one
+  distinct slot. `prepare_groups` (`search.py:23-30`) applies `fixed` first and
+  short-circuits before ever reading `locked`, so a lock written for such a group from the
+  pane would be silently ignored: the row and the timeslot row would both show 🔒 while the
+  timetable does not move. The pane's model is "a slot I can decide" — a `fixed` group
+  offers nothing to decide, so it gets no row.
+
 - `current_class_no` is always available: `assignment` is built from every choice in the
   combo (`search.py:122`), including non-balloted groups, so it covers LEC rows too.
 
@@ -109,16 +116,22 @@ retaining both is the desired behaviour.
 by `slot_sig`. For CS1231S that produces two visually identical rows, making the feature
 unusable for the case that motivated it.
 
-Labels gain the representative choice's venue and reuse the existing `~` online marker
-from `render.py:111`:
+Labels gain a venue segment and reuse the existing `~` online marker from
+`render.py:111`:
 
 ```
   Thu 1200-1400, Fri 1200-1300  @UT-AUD1    (1)
  ~Thu 1200-1400, Fri 1200-1300  @E-Learn_C  (2)
 ```
 
-Where a row folds several classes together (venue twins sharing a signature), the
-representative's venue is shown; the class-number list already communicates the twinning.
+**Correction (post-implementation):** the venue segment shows every distinct venue
+across the row's classes, joined with `/` — not just the representative's. Showing only
+the representative's venue was the original plan here, but it was found to produce false
+labels: `slot_sig` deliberately ignores venue, so venue-differing classes (pure
+venue-twins at the same day/time/online-ness) merge into one row, and a representative-only
+label would misdescribe every non-representative class in that row. The project owner
+decided to show the venue list instead; this is what the code implements
+(`offered_timeslots`/`_fmt_timeslot` in `tui/state.py` and `tui/app.py`).
 
 ## 6. No new locking machinery
 
