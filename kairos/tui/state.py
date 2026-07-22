@@ -295,7 +295,8 @@ class AppState:
         return ballot.ranked_options(self.result, self.config)
 
     def ballot_snake(self) -> list:
-        return ballot.snake(self.ballot_options(), self.config)
+        full = ballot.all_options(self.result, self.config)
+        return ballot.snake(ballot.fill_to_cap(full, self.config), self.config)
 
     def to_config_yaml(self) -> dict:
         prefs = self.config.preferences

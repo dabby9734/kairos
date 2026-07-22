@@ -45,6 +45,13 @@ def test_run_end_to_end(tmp_path, config_file, monkeypatch, capsys, alpha_json, 
     assert "BETA=LAB:" in out and "LEC:1" in out
     # backup section lists ALPHA tutorials with interchangeable pair 02/03
     assert "interchangeable" in out
+    # only 5 viable options exist across ALPHA TUT + BETA LAB, so the ballot
+    # falls short of the 20-slot cap and the CLI must warn about it
+    assert (
+        "warning: ballot uses only 5 of 20 slots — no further clash-free "
+        "options exist. NUS notes a shorter list may mean not getting a "
+        "tutorial allocated at all."
+    ) in out
 
 
 def test_run_accepts_config_flag_after_subcommand(

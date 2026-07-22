@@ -148,6 +148,42 @@ async def test_save_config_writes_file(state, tmp_path):
     assert yaml.safe_load(path.read_text())["semester"] == state.config.semester
 
 
+def _ballot_entries(n):
+    from kairos.ballot import BallotOption
+    from kairos.model import Session
+
+    sess = Session("Monday", 600, 660, frozenset(range(1, 14)), "COM1")
+    return [
+        BallotOption("ALPHA", "Tutorial", f"{i:02d}", chr(ord("A") + i), 0.0, (sess,), [])
+        for i in range(n)
+    ]
+
+
+async def test_export_ballot_shortfall_warns(state, tmp_path, monkeypatch):
+    app = KairosApp(state, tmp_path / "config.yaml")
+    monkeypatch.setattr(app.state, "ballot_snake", lambda: _ballot_entries(5))
+    notes, kwargs = [], []
+    monkeypatch.setattr(app, "notify", lambda msg, **kw: (notes.append(msg), kwargs.append(kw)))
+    async with app.run_test() as pilot:
+        await pilot.press("e")
+    out = tmp_path / "ballot.txt"
+    assert out.exists()  # the file is still written even though the ballot fell short
+    assert any("only 5 of 20 ballot slots used" in n for n in notes)
+    assert kwargs[-1].get("severity") == "warning"
+
+
+async def test_export_ballot_full_notifies_without_warning(state, tmp_path, monkeypatch):
+    app = KairosApp(state, tmp_path / "config.yaml")
+    monkeypatch.setattr(app.state, "ballot_snake", lambda: _ballot_entries(20))
+    notes, kwargs = [], []
+    monkeypatch.setattr(app, "notify", lambda msg, **kw: (notes.append(msg), kwargs.append(kw)))
+    async with app.run_test() as pilot:
+        await pilot.press("e")
+    out = tmp_path / "ballot.txt"
+    assert notes == [f"wrote {out}"]  # plain notify, no shortfall wording
+    assert kwargs == [{}]  # no severity kwarg on the full-ballot branch
+
+
 async def test_copy_link_uses_os_clipboard(state, tmp_path, monkeypatch):
     captured = {}
     monkeypatch.setattr(

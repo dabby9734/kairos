@@ -68,6 +68,35 @@ def test_build_state_migrates_non_balloted_fixed_to_locked(
     assert len(lec.choices) == 2
 
 
+def test_migration_overwrites_a_colliding_locked_entry(
+    tmp_path, monkeypatch, alpha_json, beta_json
+):
+    """When one key sits in BOTH `fixed` and `locked`, `fixed` must win.
+
+    prepare_groups reads `fixed` first and short-circuits, so pre-migration the
+    file behaved as `fixed`. The migration overwrites rather than skips, keeping
+    the effective pin identical. Balloted `fixed` entries stay put regardless.
+    """
+    import yaml
+
+    _patch_fetch(monkeypatch, alpha_json, beta_json)
+    cfg = {
+        "acad_year": "2026-2027",
+        "semester": 1,
+        "modules": {"ALPHA": {"difficulty": 3}, "BETA": {"difficulty": 3}},
+        "fixed": {"BETA": {"LEC": "1"}, "ALPHA": {"TUT": "01"}},  # LEC free, TUT balloted
+        "locked": {"BETA": {"LEC": "2"}},  # collides with the fixed LEC pin
+        "priority": ["ALPHA", "BETA"],
+    }
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+    state = build_state(None, path, tmp_path / "cache")
+    assert state.config.locked["BETA"]["LEC"] == "1"  # fixed won, not "2"
+    assert "BETA" not in state.config.fixed
+    assert state.config.fixed["ALPHA"]["TUT"] == "01"  # balloted pin untouched
+    assert "ALPHA" not in state.config.locked
+
+
 def test_build_state_leaves_balloted_fixed_alone(
     tmp_path, monkeypatch, alpha_json, beta_json
 ):

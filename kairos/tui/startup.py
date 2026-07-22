@@ -68,6 +68,7 @@ def migrate_fixed_to_locked(config) -> None:
                 continue
             # fixed previously won over locked, so it wins this overwrite too
             config.locked.setdefault(code, {})[abbrev] = str(slots.pop(abbrev))
+            config.migrated_from_fixed.add((code, abbrev))
         if not slots:
             config.fixed.pop(code)
 
