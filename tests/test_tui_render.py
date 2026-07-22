@@ -192,3 +192,32 @@ def test_preview_none_unchanged():
     assert _plain(render_week_rich(assignment, colours)) == _plain(
         render_week_rich(assignment, colours, preview=None)
     )
+
+
+def test_previewing_current_slot_draws_no_duplicate_bar():
+    # Highlighting the slot the class already occupies must add nothing at all:
+    # no second lane, no "(preview)" agenda line. Flash mode changes only style,
+    # so the plain text must be byte-identical to rendering with no preview.
+    assignment = {("CS2030S", "Tutorial"): _choice("CS2030S", "Tutorial", "01", "Monday", 840, 900)}
+    sig = frozenset({("Monday", 840, 900, False)})
+    colours = module_colours(["CS2030S"])
+    flashed = _plain(render_week_rich(assignment, colours, preview=("CS2030S", "Tutorial", sig)))
+    assert flashed == _plain(render_week_rich(assignment, colours))
+    assert "(preview)" not in flashed
+
+
+def test_flashed_slot_blinks_strip_and_agenda():
+    # Both the strip and its agenda line carry the blink SGR (5), and the strip
+    # keeps CS2030S's own colour pair (black on green -> 30;42) underneath it.
+    assignment = {("CS2030S", "Tutorial"): _choice("CS2030S", "Tutorial", "01", "Monday", 840, 900)}
+    sig = frozenset({("Monday", 840, 900, False)})
+    colours = module_colours(["CS2030S"])
+    console = Console(width=200, force_terminal=True, color_system="standard")
+    with console.capture() as cap:
+        console.print(render_week_rich(assignment, colours, preview=("CS2030S", "Tutorial", sig)))
+    lines = cap.get().splitlines()
+    strip = next(line for line in lines if line.startswith("Mon"))
+    agenda = next(line for line in lines if "TUT[01]" in line)
+    for line in (strip, agenda):
+        assert "\x1b[5m" in line or ";5m" in line or "\x1b[5;" in line
+    assert "30;42" in strip
