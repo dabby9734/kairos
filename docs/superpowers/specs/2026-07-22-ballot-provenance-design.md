@@ -28,7 +28,14 @@ ranking signal was anti-correlated with quality.
 
 Measured against the repo's `config.yaml` (CS1231S / CS2030S / MA1521 / MA1522 /
 UTW1001X), 363 clash-free arrangements, `top_n: 5`,
-`alternatives_per_module: 4`.
+`alternatives_per_module: 4`, with `gaps` and `same_day_pairing` weighted 0.
+
+All cluster-level figures below were re-verified against this config after it
+was retuned mid-analysis, and reproduce exactly. Any figure quoted here should
+be treated as weight-dependent: the *conclusions* (ties dominate, support is
+anti-correlated with quality, median discriminates) held across both weight
+sets tested, but the specific numbers will move when weights change. Tests must
+therefore assert on ordering relationships, never on literal scores.
 
 **Provenance against displayed timetables is mostly empty.** Only 13 of 20
 ballot entries appear in one of the 5 displayed timetables. Annotating "which
@@ -36,9 +43,14 @@ of your top timetables is this in?" would leave 7 entries blank, reading as
 "the tool put junk in my ballot".
 
 **Ordinal arrangement rank is near-meaningless.** 363 arrangements share only
-30 distinct scores; 9 tie at the best score of −19.0, 22 at another. A class in
-a joint-best timetable could render as `best: #7` purely from tiebreak order.
+15 distinct scores, and 70 of them tie at the best score of −14.0. A class in a
+joint-best timetable could render as `best: #58` purely from tiebreak order.
 Hence tiers over distinct scores, not ordinal position.
+
+(Measured after the weight retune noted above. An earlier reading under
+different weights gave 30 distinct scores with 9 tied at the best; the tie
+problem is worse under the current weights, not better, so this conclusion is
+robust to retuning rather than an artefact of one weight set.)
 
 **`best_score` ties are the normal case, and the fallback was class number.**
 `ballot.py:84` sorts `(-best_score, class_no)`. Seven CS1231S tutorial clusters
@@ -115,6 +127,22 @@ bid construction and venue expansion. Class numbers are recovered by expanding
 each candidate's `slot_opts` footprints through `space.members`. Single pass,
 O(arrangements × slots).
 
+**Provenance must be computed over the full candidate set, never over
+`AppState.arrangements`.** That list is capped at `config.max_arrangements`
+(default 50, `state.py:121`) to bound the TUI's ListView. Deriving provenance
+from it would make the TUI report "of 50" while the CLI reports "of 363" —
+reintroducing the very cross-surface inconsistency this design removes.
+`_candidates_from_structure` is uncapped and cheap, because the cost of
+`rank_arrangements` is bid construction, which it skips.
+
+**Index alignment is a load-bearing invariant.** `Provenance.members` is keyed
+by position in the full score-sorted candidate list. The TUI highlights a
+selection indexed into the capped list from `rank_arrangements(limit=...)`,
+which selects via `heapq.nlargest`. These agree only because `nlargest` is
+equivalent to a stable descending sort — asserted in the comment at
+`search.py:317` but currently untested. If it drifts, highlighting marks the
+wrong ballot rows silently. Section 5 pins it.
+
 Placement: `search.py` owns ranking and `ballot.py` owns ballot construction;
 this is the join between them and belongs cleanly in neither. Both files are
 already large.
@@ -188,7 +216,58 @@ values, so it invalidates on retune exactly as `scored` does.
 This also resolves the dead `AppState.ranked_options` (`state.py:295`): either
 wire it up or delete it.
 
-### 5. Testing
+### 5. Unify the ranking unit across CLI and TUI
+
+The CLI displays combo-ranked timetables (`cli.py:141` iterates `result.top`)
+while the TUI displays arrangements. Provenance tiers are defined over
+arrangements, so without this the CLI would print `best #3` next to its own
+third timetable and mean two different things.
+
+`cmd_run` is restructured to mirror `AppState._rank_from` (`state.py:113`),
+which already derives both from one scoring pass:
+
+```python
+space = search.enumerate_clashfree(groups)
+scored = search.score_combos(space, config)
+result = search.rank(space, config, scored=scored)          # ballot still needs
+                                                            # best_by_footprint + members
+structure = search.build_arrangement_structure(space)
+prov = provenance.arrangement_provenance(space, config, scored=scored,
+                                         structure=structure)
+arrangements = search.rank_arrangements(space, config, limit=config.top_n,
+                                        scored=scored, structure=structure)
+```
+
+Display then iterates `arrangements`, reading `arr.score`, `arr.breakdown` and
+`arr.assignment` — all already carried on `Arrangement`.
+
+`_score_combos` is promoted to public `score_combos`. It is currently private
+yet already imported directly by tests (`test_search.py:155`, `:255`, `:307`,
+`:314`), and now has three legitimate callers (CLI, provenance, tests). Rename
+and update those references.
+
+`search.search()` stays as-is: `cmd_run` no longer uses it, but four tests do
+(`test_search.py:94`, `:103`, `:116`, `:145`) and it remains a reasonable
+convenience wrapper.
+
+Two user-visible consequences:
+
+- **`top_n` changes meaning** from "combos shown" to "arrangements shown".
+  Because arrangements collapse same-slot week-twins, `top_n: 5` now yields 5
+  *distinct layouts* rather than up to 5 near-identical timetables. This is an
+  improvement but is a semantic change to the config key and should be noted in
+  the README.
+- **The header should report both counts**, since `evaluated` counts combos
+  while provenance denominators count arrangements:
+  `evaluated 363 clash-free timetable shapes (363 distinct arrangements)`.
+  These coincide under the current `config.yaml`; they diverge whenever
+  collapsing occurs, and showing both is what makes the annotation denominators
+  self-explaining.
+
+Optionally surface `arr.variant_count` when greater than 1, so a collapsed
+arrangement discloses that it stands for several week-variants. Not required.
+
+### 6. Testing
 
 - `arrangement_provenance` against a hand-built fixture: ceiling, median,
   support, tier assignment, cluster-level aggregation over twins.
@@ -202,16 +281,17 @@ wire it up or delete it.
 - `all_options` with `provenance=None` is byte-identical to current behaviour.
 - `render_snake` with `provenance=None` is byte-identical to current output.
 - Column alignment with mixed-width entries and multi-session classes.
+- **Index alignment:** for a space where collapsing occurs and scores tie,
+  `rank_arrangements(space, config, limit=n)` returns exactly the first `n`
+  entries of the uncapped `rank_arrangements(space, config)`, and both agree
+  positionally with `Provenance.members` keys. This pins the `heapq.nlargest`
+  ≡ stable-sort assumption that TUI highlighting depends on.
+- **Provenance is cap-independent:** `arrangement_provenance` returns identical
+  `total` and `stats` for `max_arrangements` of 3, 50, and unset.
+- **Cross-surface agreement:** for one config, the CLI's `timetable #k` and the
+  TUI's k-th arrangement have equal score and assignment.
 
 ## Out of scope
-
-**CLI displays combos, TUI displays arrangements.** `cli.py:141` iterates
-`result.top` (combo-ranked) while the TUI shows `rank_arrangements` output.
-These orderings can diverge when collapsing occurs. Provenance tiers are defined
-over arrangements in both surfaces, so a CLI user comparing `best #3` against
-the CLI's own third displayed timetable may find they disagree. No collapsing
-occurs under the current `config.yaml` (363 combos, 363 arrangements), so this
-is latent rather than active. Worth a follow-up.
 
 **Whether twins should be ranked at all.** This design reorders them behind
 distinct timeslots but still ranks every twin. Whether a third copy of a
