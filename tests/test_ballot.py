@@ -1,6 +1,6 @@
 import pytest
 
-from kairos.ballot import BallotOption, ranked_options, snake
+from kairos.ballot import BallotOption, all_options, ranked_options, snake
 from kairos.model import Session
 from kairos.search import SearchResult
 
@@ -151,3 +151,23 @@ def test_ranked_options_groups_venue_twins(config):
     by_no = {o.class_no: o for o in tut}
     assert by_no["01"].tied_with == ["02"]
     assert by_no["02"].tied_with == ["01"]
+
+
+def test_all_options_is_uncapped(config):
+    config.alternatives_per_module = 2
+    full = all_options(fake_result(config), config)
+    # uncapped: all three viable ALPHA tutorials, despite the cap of 2
+    assert [o.class_no for o in full[("ALPHA", "Tutorial")]] == ["01", "02", "03"]
+    # letters are positional over the FULL list
+    assert [o.letter for o in full[("ALPHA", "Tutorial")]] == ["A", "B", "C"]
+    # 04 stays excluded: never part of a clash-free timetable
+    assert "04" not in [o.class_no for o in full[("ALPHA", "Tutorial")]]
+
+
+def test_ranked_options_is_a_prefix_of_all_options(config):
+    config.alternatives_per_module = 2
+    result = fake_result(config)
+    full = all_options(result, config)
+    capped = ranked_options(result, config)
+    for key, opts in capped.items():
+        assert opts == full[key][: len(opts)]

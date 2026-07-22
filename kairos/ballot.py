@@ -18,7 +18,12 @@ class BallotOption:
     tied_with: list
 
 
-def ranked_options(result, config) -> dict:
+def all_options(result, config) -> dict:
+    """Every viable ballot option per balloted group, best-first, UNCAPPED.
+
+    Letters are assigned positionally over the full list, so any prefix of a
+    group's list carries correct letters — which is what lets ranked_options
+    and fill_to_cap both slice this without recomputing."""
     # Interchangeability via CLASH-SET equality (cheap + sound). Build the set of
     # viable footprints (those in some clash-free timetable) with a representative
     # choice each, then two same-slot footprints of a group are interchangeable
@@ -77,8 +82,6 @@ def ranked_options(result, config) -> dict:
         for best, choices in scored:
             class_nos = [c.class_no for c in choices]
             for c in choices:
-                if len(options) >= config.alternatives_per_module:
-                    break
                 options.append(
                     BallotOption(
                         module=module,
@@ -93,6 +96,18 @@ def ranked_options(result, config) -> dict:
         if options:
             options_by_group[(module, lesson_type)] = options
     return options_by_group
+
+
+def ranked_options(result, config) -> dict:
+    """Per-group options truncated to config.alternatives_per_module.
+
+    This is the "backup choices per balloted group" view. The ballot itself uses
+    fill_to_cap, which treats alternatives_per_module as a baseline rather than a
+    ceiling."""
+    return {
+        key: opts[: config.alternatives_per_module]
+        for key, opts in all_options(result, config).items()
+    }
 
 
 def snake(options_by_group: dict, config, cap: int = 20) -> list:
