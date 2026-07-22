@@ -361,7 +361,7 @@ async def test_timeslots_populate_from_highlighted_class(state, tmp_path):
         assert "ALPHA TUT" in str(app.query_one("#timeslot-list", ListView).border_title)
 
 
-async def test_browsing_timeslot_shows_blinking_preview(state, tmp_path):
+async def test_browsing_timeslot_shows_preview_bar(state, tmp_path):
     from rich.console import Console
 
     app = KairosApp(state, tmp_path / "config.yaml")
@@ -381,13 +381,13 @@ async def test_browsing_timeslot_shows_blinking_preview(state, tmp_path):
         assert "(preview)" in cap.get()      # candidate rendered as a preview bar
 
 
-async def test_default_timeslot_cursor_flashes_not_previews(state, tmp_path):
+async def test_default_timeslot_cursor_inverts_not_previews(state, tmp_path):
     # _populate_timeslots seeds the Timeslots cursor onto the class's own
     # locked/current slot_sig (see state.py). That's exactly the case flash
     # mode exists for: highlighting the slot the class already occupies must
-    # blink it in place rather than draw a redundant "(preview)" bar. This
+    # invert it in place rather than draw a redundant "(preview)" bar. This
     # pins that default-cursor path end-to-end, since the neighbouring
-    # test_browsing_timeslot_shows_blinking_preview only exercises preview
+    # test_browsing_timeslot_shows_preview_bar only exercises preview
     # mode (it moves the cursor to index 1).
     from rich.console import Console
 
