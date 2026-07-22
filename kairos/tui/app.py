@@ -90,10 +90,10 @@ class KairosApp(App):
     CSS = """
     #controls { width: 42; }
     #results { width: 1fr; }
-    #top-row { height: 30%; }
+    #top-row { height: 20%; }
     #tt-list { width: 45%; border: round $panel; border-title-color: $text; }
     #warnings { width: 1fr; border: round $panel; border-title-color: $text; }
-    #classes-row { height: 15%; }
+    #classes-row { height: 20%; }
     #slot-list { width: 45%; border: round $panel; border-title-color: $text; }
     #timeslot-list { width: 1fr; border: round $panel; border-title-color: $text; }
     #detail-scroll { height: 1fr; }

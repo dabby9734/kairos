@@ -338,3 +338,16 @@ async def test_browsing_timeslot_shows_blinking_preview(state, tmp_path):
         with console.capture() as cap:
             console.print(app.query_one("#detail", Static)._Static__content)
         assert "(preview)" in cap.get()      # candidate rendered as a preview bar
+
+
+async def test_week_grid_gets_more_height_than_the_top_row(state, tmp_path):
+    app = KairosApp(state, tmp_path / "config.yaml")
+    # Size is pinned: the assertion compares integer row counts, so it must not
+    # depend on the harness default. At 100x30 the results column is 28 rows —
+    # before: top=8 classes=4 detail=16; after: top=5 classes=5 detail=18.
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.pause()
+        top_row = app.query_one("#top-row")
+        detail = app.query_one("#detail-scroll")
+        # timetables + warnings shrank; the week grid absorbs the remainder
+        assert detail.size.height >= 3 * top_row.size.height
