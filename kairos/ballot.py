@@ -110,8 +110,9 @@ def ranked_options(result, config) -> dict:
     fill_to_cap, which treats alternatives_per_module as a baseline rather than a
     ceiling.
 
-    Groups whose capped list is empty are excluded from the result dict's keys.
-    With a cap <= 0, no groups appear (returns empty dict)."""
+    Every key here maps to a non-empty list — not because this function filters,
+    but because all_options only ever emits groups that have options. With a cap
+    <= 0, no groups appear at all (returns empty dict)."""
     full = all_options(result, config)
     if config.alternatives_per_module <= 0:
         return {}

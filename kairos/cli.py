@@ -149,7 +149,7 @@ def cmd_run(args) -> None:
     print("=== backup choices per balloted group ===")
     print(output.render_options(ballot.ranked_options(result, config)))
     entries = ballot.snake(ballot.fill_to_cap(full, config), config)
-    print("\n=== ballot ranking (snake order, cap 20) ===")
+    print(f"\n=== ballot ranking (snake order, cap {ballot.BALLOT_CAP}) ===")
     print(output.render_snake(entries))
     missing = ballot.shortfall(entries)
     if missing:
