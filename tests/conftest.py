@@ -115,3 +115,14 @@ def config():
         alternatives_per_module=4,
         top_n=5,
     )
+
+
+@pytest.fixture
+def groups(alpha_json, beta_json, config):
+    from kairos.api import build_groups, semester_timetable
+    from kairos.search import prepare_groups
+
+    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1)) + build_groups(
+        "BETA", semester_timetable(beta_json, 1)
+    )
+    return prepare_groups(gs, config)
