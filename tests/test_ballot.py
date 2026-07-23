@@ -317,3 +317,103 @@ def test_shortfall(config):
     assert shortfall([opt("A", "Tutorial", "01", "A")] * 18) == 2
     assert shortfall([opt("A", "Tutorial", "01", "A")] * 20) == 0
     assert shortfall([opt("A", "Tutorial", "01", "A")] * 25) == 0  # never negative
+
+
+class FakeProvenance:
+    """Minimal stand-in: maps a class number to (ceiling, median, support)."""
+
+    def __init__(self, table):
+        self.table = table
+        self.total = 100
+
+    def cluster_stats(self, keys):
+        from kairos.provenance import ClusterStats
+
+        rows = [self.table[k] for k in keys if k in self.table]
+        if not rows:
+            return None
+        ceiling = max(r[0] for r in rows)
+        median = max(r[1] for r in rows)
+        support = max(r[2] for r in rows)
+        return ClusterStats(ceiling, median, support, 1, 1)
+
+
+def test_all_options_without_provenance_is_unchanged(config):
+    result = fake_result(config)
+    assert all_options(result, config) == all_options(result, config, provenance=None)
+
+
+def test_provenance_breaks_ceiling_ties_on_median(config):
+    # Both ALPHA clusters tie on ceiling. Cluster {03} has the better median,
+    # so it must outrank {01,02} despite a higher class number.
+    result = fake_result(config)
+    result.best_by_footprint = {k: 10.0 for k in result.best_by_footprint}
+    prov = FakeProvenance({
+        ("ALPHA", "Tutorial", "01"): (10.0, -30.0, 50),
+        ("ALPHA", "Tutorial", "02"): (10.0, -30.0, 50),
+        ("ALPHA", "Tutorial", "03"): (10.0, -10.0, 5),
+        ("BETA", "Laboratory", "L1"): (9.0, -10.0, 5),
+        ("BETA", "Laboratory", "L2"): (7.0, -10.0, 5),
+    })
+    tut = all_options(result, config, provenance=prov)[("ALPHA", "Tutorial")]
+    assert [o.class_no for o in tut] == ["03", "01", "02"]
+
+
+def test_high_support_does_not_beat_better_median(config):
+    # The UTW1001X SEC[2] vs SEC[4] inversion from the design doc: the option
+    # appearing in far MORE arrangements is worse on median and must lose.
+    result = fake_result(config)
+    result.best_by_footprint = {k: 10.0 for k in result.best_by_footprint}
+    prov = FakeProvenance({
+        ("ALPHA", "Tutorial", "01"): (10.0, -20.0, 264),
+        ("ALPHA", "Tutorial", "02"): (10.0, -20.0, 264),
+        ("ALPHA", "Tutorial", "03"): (10.0, -19.0, 99),
+        ("BETA", "Laboratory", "L1"): (9.0, -10.0, 5),
+        ("BETA", "Laboratory", "L2"): (7.0, -10.0, 5),
+    })
+    tut = all_options(result, config, provenance=prov)[("ALPHA", "Tutorial")]
+    assert [o.class_no for o in tut] == ["03", "01", "02"]
+
+
+def test_narrow_but_excellent_option_is_not_demoted(config):
+    # CS1231S TUT[09] from the design doc: support 6 but median at the best
+    # score. Support must not drag it below a broad-but-mediocre option.
+    result = fake_result(config)
+    result.best_by_footprint = {k: 10.0 for k in result.best_by_footprint}
+    prov = FakeProvenance({
+        ("ALPHA", "Tutorial", "01"): (10.0, -19.0, 29),
+        ("ALPHA", "Tutorial", "02"): (10.0, -19.0, 29),
+        ("ALPHA", "Tutorial", "03"): (10.0, -14.0, 6),
+        ("BETA", "Laboratory", "L1"): (9.0, -10.0, 5),
+        ("BETA", "Laboratory", "L2"): (7.0, -10.0, 5),
+    })
+    tut = all_options(result, config, provenance=prov)[("ALPHA", "Tutorial")]
+    assert [o.class_no for o in tut] == ["03", "01", "02"]
+
+
+def test_support_breaks_median_ties(config):
+    result = fake_result(config)
+    result.best_by_footprint = {k: 10.0 for k in result.best_by_footprint}
+    prov = FakeProvenance({
+        ("ALPHA", "Tutorial", "01"): (10.0, -14.0, 5),
+        ("ALPHA", "Tutorial", "02"): (10.0, -14.0, 5),
+        ("ALPHA", "Tutorial", "03"): (10.0, -14.0, 40),
+        ("BETA", "Laboratory", "L1"): (9.0, -10.0, 5),
+        ("BETA", "Laboratory", "L2"): (7.0, -10.0, 5),
+    })
+    tut = all_options(result, config, provenance=prov)[("ALPHA", "Tutorial")]
+    assert [o.class_no for o in tut] == ["03", "01", "02"]
+
+
+def test_ranked_options_forwards_provenance(config):
+    result = fake_result(config)
+    result.best_by_footprint = {k: 10.0 for k in result.best_by_footprint}
+    prov = FakeProvenance({
+        ("ALPHA", "Tutorial", "01"): (10.0, -30.0, 50),
+        ("ALPHA", "Tutorial", "02"): (10.0, -30.0, 50),
+        ("ALPHA", "Tutorial", "03"): (10.0, -10.0, 5),
+        ("BETA", "Laboratory", "L1"): (9.0, -10.0, 5),
+        ("BETA", "Laboratory", "L2"): (7.0, -10.0, 5),
+    })
+    tut = ranked_options(result, config, provenance=prov)[("ALPHA", "Tutorial")]
+    assert tut[0].class_no == "03"
