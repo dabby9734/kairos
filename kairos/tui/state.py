@@ -13,7 +13,6 @@ from ..search import (
     prepare_groups,
     rank,
     rank_arrangements,
-    score_combos,
     score_raw,
     weight_scored,
 )
