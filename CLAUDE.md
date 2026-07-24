@@ -7,6 +7,7 @@ Textual TUI, pure-functional core.
 - install: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`
 - test: `.venv/bin/pytest -q` (all tests must pass; async tests need no marker)
 - run: `.venv/bin/kairos run` | TUI: `.venv/bin/kairos tui`
+- advise: `.venv/bin/kairos advise` (CourseReg R2/R3 ranking advisor)
 
 ## Read first
 - docs/architecture.md — data flow, module map, invariants (slot_sig vs
@@ -15,8 +16,9 @@ Textual TUI, pure-functional core.
 - docs/user-guide.md — what users see; NUS ballot mechanics
 
 ## Hard rules
-- model/scoring/search/ballot/provenance stay pure — no I/O in the core
-  (sole existing exception: `search.prepare_groups` warns/exits on bad config)
+- model/scoring/search/ballot/provenance, coursereg/{model,advisor} stay
+  pure — no I/O in the core (exceptions: `search.prepare_groups` warns/exits
+  on bad config; `coursereg.model.load_profile` reads `coursereg.yaml`)
 - every sort needs an explicit deterministic tiebreak (usually class_no)
 - user-facing errors: `raise SystemExit("error: ...")`
 - no terminal blink (SGR 5); use reverse video — Terminal.app ignores blink

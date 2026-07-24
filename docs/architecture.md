@@ -32,6 +32,19 @@
   (`search.weight_scored`). This split is what makes the TUI's live slider
   tuning possible — `AppState.reweight()` reuses the cached raw pass and only
   redoes the second, cheap one.
+- **A second, independent pure-functional subsystem**: `kairos/coursereg/`
+  (the CourseReg what-if advisor behind `kairos advise`) follows the same
+  split — `coursereg/model.py` and `coursereg/advisor.py` do no network I/O
+  (one caveat, analogous to `search.prepare_groups`'s: `model.load_profile`
+  reads/validates `coursereg.yaml` off disk and raises `SystemExit` if it's
+  missing), `coursereg/fetch.py` is the sole network/cache edge, and
+  `coursereg/tui/state.py` + `coursereg/tui/app.py` mirror the timetable
+  TUI's `AppState`/`App` split so `AdvisorState` is testable without
+  Textual. Its cache (`fetch.load_history`, under `data/coursereg/`) has
+  **no TTL**, unlike `api.py`'s 24-hour timetable cache — the upstream
+  CourseRekt project is archived and its historical data permanently
+  frozen, so a cache hit never goes stale; the only refresh path is the
+  explicit `--refetch` repair hatch.
 
 ## Data flow
 
@@ -49,7 +62,23 @@ flowchart LR
     RANK --> BALLOT[ballot.py<br/>cluster → fill to 20 → snake]
     PROV --> BALLOT
     BALLOT --> OUT[output.py / tui]
+
+    YAML[coursereg.yaml] --> CRCLI[cli.py: kairos advise]
+    CRCLI --> FETCH[coursereg/fetch.py<br/>fetch + permanent cache]
+    FETCH --> CRMODEL[coursereg/model.py<br/>DemandRecord / Profile]
+    CRMODEL --> ADV[coursereg/advisor.py<br/>verdict + suggested_order]
+    ADV --> CRSTATE[coursereg/tui/state.py<br/>AdvisorState]
+    CRSTATE --> CRAPP[coursereg/tui/app.py<br/>AdvisorApp]
 ```
+
+The `advise` path (bottom row) is a separate, disconnected flow through the
+same diagram — it shares no code with the timetable pipeline above it, only
+the `cli.py` entrypoint. `cli.cmd_advise` loads `coursereg.yaml` into a
+`Profile` (`coursereg.model.load_profile`), loads the permanently-cached
+demand history (`coursereg.fetch.load_history`), and hands both to
+`AdvisorState`, which computes every candidate's `Verdict`
+(`coursereg.advisor.verdict`) and a leverage-ordered suggestion
+(`suggested_order`) before `AdvisorApp` renders them.
 
 Walking it in prose: `cli.py` (for `init`/`run`) or `tui.startup` (for `tui`)
 turns a share URL or an on-disk `config.yaml` into a list of `ChoiceGroup`s,
@@ -467,6 +496,111 @@ left/right (adjust by one step) and up/down (`_focus_sibling`, which moves
 focus to the previous/next `Slider` within the same `TabPane` — or the whole
 screen if the slider isn't inside one — so up/down stays within the current
 tab's control group).
+
+**`coursereg/model.py`** — the coursereg subpackage's leaf module; imports
+`yaml` plus stdlib `dataclasses.dataclass`/`pathlib.Path`. `UNLIMITED =
+2_147_483_647` mirrors upstream CourseRekt's INF sentinel for
+unlimited-vacancy rows; `RANK_CAP = 8` is CourseReg's fixed number of C-tier
+rank preferences; `TIERS = ("core", "major", "ue")`; `TEMPLATE` is the exact
+`coursereg.yaml` string `load_profile` echoes back on a missing file.
+`DemandRecord` (frozen: `course, acad_year, semester, round, demand,
+vacancy`) is one course/round/semester's summed history row. `Profile`
+(deliberately **not** frozen — the TUI mutates `round`, `tiers`, and `order`
+in place: `seniority, semester, round, tiers, order, ranked=False`) is the
+parsed `coursereg.yaml`. `profile_from_dict(data, source="coursereg.yaml")`
+validates the four required keys, `seniority` 1–4, `semester` 1/2, `round`
+2/3, and a non-empty `candidates` mapping whose tiers are all in `TIERS`,
+upper-cases course codes, and seeds `order` from the mapping's insertion
+order — raising `SystemExit` on any violation. `load_profile(path)` raises
+`SystemExit` with `TEMPLATE` pasted into the message if the file doesn't
+exist — this is the module's one I/O exception, analogous to
+`search.prepare_groups`'s warn/exit carve-out. `profile_to_yaml(profile)` is
+the exact inverse, used by the TUI's `s` save action.
+
+**`coursereg/fetch.py`** — the coursereg subpackage's only network boundary;
+imports `requests` and `.model`'s `UNLIMITED`/`DemandRecord` (plus stdlib
+`json`, `re`, `dataclasses.asdict`, `html.parser.HTMLParser`,
+`pathlib.Path`). `_TableParser` (an `HTMLParser` subclass) collects round
+numbers from `<th class="table-round">` headers and raw `<td>` text per row
+of `table#table-data`. `parse_history_html(html, acad_year, semester)`
+merges per-course-round cells (`_CELL_RE` matches the first `x / y` in a
+cell, deliberately not the trailing `(z)` vacancy-PDF span) into one
+`DemandRecord` per `(course, round)` — summing multiple class-group rows for
+the same course/round, skipping N/A cells rather than imputing zero, and
+raising `SystemExit` if the page has no recognisable table (a courserekt
+site-shape change). `COURSEREKT_URL`/`YEARS` (five AYs, `"2122"`..`"2526"`,
+× 2 semesters = 10). `fetch_semester(acad_year, semester)` POSTs `{year,
+semester, type: "ug"}` to `courserekt.vercel.app` and returns raw HTML.
+`load_history(cache_dir, refetch=False)` is the orchestrator: one JSON cache
+file per semester under `cache_dir`, **no TTL** — the docstring is explicit
+that the upstream project is archived and its data frozen, so a cache hit
+is always valid — raising `SystemExit` (with a "copy a friend's cache"
+recovery hint, since the frozen data is byte-identical for everyone) if the
+network is unreachable and no cache exists, or on a corrupt cache file
+(hinting `--refetch`).
+
+**`coursereg/advisor.py`** — the pure verdict/ranking logic; imports `math`,
+`statistics`, and `.model`'s `RANK_CAP`/`UNLIMITED`/`DemandRecord`/`Profile`
+— no I/O at all. `SAFE`/`LIKELY`/`CONTESTED`/`TOUGH`/`LONG_SHOT`/`NO_DATA`
+and the ordinal `BANDS` ladder (`NO_DATA` sits outside it). `ratio(demand,
+vacancy)` is `demand / vacancy`, `0.0` for unlimited vacancy, `math.inf` for
+zero vacancy with nonzero demand, `None` if either input is missing or both
+are zero. `same_sem_ratios(records, course, semester, rnd)` filters to
+matching semester+round and returns `(acad_year, ratio)` pairs sorted by
+year. `base_verdict(ratios)` looks only at the last `RECENT_YEARS = 3`
+years: `SAFE` if their median is `<= SAFE_MEDIAN_MAX` (0.85) and none exceed
+1, `LONG_SHOT` if the median is `>= LONG_SHOT_MEDIAN_MIN` (1.5) and all
+exceed 1, else `CONTESTED`; no recent ratios at all is `NO_DATA`.
+`nudge_steps(tier, seniority)` returns a `-1`/`0`/`1` shift on the `BANDS`
+ladder — `core` always nudges toward `SAFE`, `ue` toward `LONG_SHOT` by
+default (seniority `>= 3` cancels that step back to neutral; seniority
+`== 1` leaves it unchanged, since the default `ue` step is already clamped
+at the ladder's edge), `major` never
+nudges. `verdict(records, course, profile)` combines `base_verdict` with the
+tier nudge into a `Verdict(course, standing, reasoning)`, the `reasoning`
+string naming how many of the recent years were oversubscribed and which
+tier/seniority nudge applied. `suggested_order(standings)` sorts courses by
+the `_LEVERAGE` table (`TOUGH` first, `SAFE` last — where a rank change is
+most likely to flip the outcome, first). `leverage_warnings(order,
+standings)` flags a `SAFE` course inside the top `TOP_RANKS = 3` ranks, a
+`TOUGH`/`CONTESTED`/`LIKELY` course past `RANK_CAP` (i.e. unranked),
+or any `NO_DATA` course. `dossier_rows(records, course, rnd, semester)`
+splits a course's history into same-semester and other-semester rows, both
+year-descending.
+
+**`coursereg/tui/state.py`** — mirrors the timetable TUI's `AppState`;
+imports `..advisor` (`dossier_rows`, `leverage_warnings`, `suggested_order`,
+`verdict`) and `..model` (`RANK_CAP`, `TIERS`, `DemandRecord`, `Profile`,
+`profile_to_yaml`) — no Textual imports, so `AdvisorState` is testable
+without a running app. `AdvisorState(profile, records)` computes every
+candidate's `Verdict` on construction (`recompute()`) and opens in
+`suggested_order` unless the loaded profile was already `ranked` (its own
+`order` wins instead). `rows()` zips the current order with rank (`None`
+past `RANK_CAP`), standing, and tier for the ranking pane. `move(index,
+delta)` swaps two entries, clamped at the list ends. `cycle_tier(course)`
+steps `core → major → ue → core` and recomputes verdicts. `toggle_round()`
+flips 2↔3 and recomputes. `restore_suggested()` resets `order` to
+`self.suggested`. `warnings()` wraps `leverage_warnings`. `dossier(course)`
+wraps `dossier_rows`. `to_yaml()` writes the current `order` back onto
+`profile.order`, sets `profile.ranked = True`, and returns
+`profile_to_yaml(profile)`.
+
+**`coursereg/tui/app.py`** — the coursereg subpackage's single Textual
+`App` subclass, `AdvisorApp`, plus `run_advisor(state, config_path)`.
+Imports `rich.text.Text`, Textual (`App`, `Horizontal`/`Vertical`,
+`Footer`/`Header`/`Label`/`ListItem`/`ListView`/`Static`), and `..advisor`
+(`NO_DATA`, `ratio`) / `..model` (`UNLIMITED`). `compose()` builds a
+three-pane layout: a `Ranking` `ListView` (left), a `Dossier` `Static`
+(right), and a `Notes` `Static` (bottom). `on_mount()` sets `sub_title =
+"assumes independent per-course queues"` — the header bar surfaces stated
+assumption #1 permanently, per the design spec's instruction to put it "in
+the TUI help, not just" the docs. `BINDINGS`: `j`/`k` move the cursor,
+`J`/`K` reorder (`state.move`), `a` restores the suggested order, `t`
+cycles the highlighted course's tier, `r` toggles round 2/3, `s` saves
+`coursereg.yaml` via `state.to_yaml()`, `q` quits. `_refresh_detail()`
+renders the dossier pane: same-semester history rows in full,
+other-semester rows dimmed as context only, then the verdict's `reasoning`
+string.
 
 ## Key invariants and decisions
 
