@@ -197,6 +197,17 @@ def cmd_tui(args) -> None:
     run_app(state, Path(args.config))
 
 
+def cmd_advise(args) -> None:
+    from .coursereg.fetch import load_history
+    from .coursereg.model import load_profile
+    from .coursereg.tui.app import run_advisor
+    from .coursereg.tui.state import AdvisorState
+
+    profile = load_profile(Path(args.config))
+    records = load_history(Path(args.cache_dir), refetch=args.refetch)
+    run_advisor(AdvisorState(profile, records), Path(args.config))
+
+
 def _add_common_flags(subparser, dest_prefix: str) -> None:
     # NOTE: argparse's SubParsersAction parses the subcommand with a *fresh*
     # namespace and unconditionally copies every attribute back onto the
@@ -235,6 +246,26 @@ def main(argv: list | None = None) -> None:
     tui_parser.add_argument("--acad-year", help="e.g. 2026-2027 (default: guessed from date)")
     _add_common_flags(tui_parser, "tui")
 
+    advise_parser = subparsers.add_parser(
+        "advise", help="CourseReg R2/R3 ranking advisor (what-if TUI)"
+    )
+    # advise has its OWN config/cache defaults (coursereg.yaml, data/coursereg)
+    # rather than _add_common_flags: the generic merge in main() would fall
+    # back to the timetable's config.yaml/data/cache for absent values, and
+    # these non-None defaults keep the merge from ever falling through.
+    advise_parser.add_argument(
+        "--config", dest="advise_config", default="coursereg.yaml",
+        help="path to coursereg.yaml",
+    )
+    advise_parser.add_argument(
+        "--cache-dir", dest="advise_cache_dir", default="data/coursereg",
+        help="demand-history cache directory",
+    )
+    advise_parser.add_argument(
+        "--refetch", action="store_true",
+        help="re-scrape courserekt even if cached (repair hatch)",
+    )
+
     args = parser.parse_args(argv)
     args.config = getattr(args, f"{args.command}_config", None) or args.config
     args.cache_dir = getattr(args, f"{args.command}_cache_dir", None) or args.cache_dir
@@ -242,5 +273,7 @@ def main(argv: list | None = None) -> None:
         cmd_init(args)
     elif args.command == "run":
         cmd_run(args)
+    elif args.command == "advise":
+        cmd_advise(args)
     else:
         cmd_tui(args)
