@@ -282,6 +282,126 @@ def test_class_warnings_unpairable_slots_kwarg_matches_space(config):
     assert class_warnings(a, config, unpairable_slots=unpairable) == class_warnings(a, config, space=space)
 
 
+def test_render_snake_without_provenance_is_unchanged():
+    from kairos.ballot import BallotOption
+    from kairos.model import Session
+
+    weeks = frozenset(range(1, 14))
+    entry = BallotOption(
+        "ALPHA", "Tutorial", "01", "A", 3.0,
+        (Session("Monday", 600, 660, weeks, "COM1"),), [],
+    )
+    assert render_snake([entry]) == render_snake([entry], provenance=None)
+
+
+def test_render_snake_shows_best_and_typical():
+    from kairos.ballot import BallotOption
+    from kairos.model import Session
+    from kairos.provenance import ClusterStats
+
+    class Prov:
+        total = 363
+
+        def cluster_stats(self, keys):
+            return ClusterStats(-14.0, -19.0, 29, 1, 3)
+
+    weeks = frozenset(range(1, 14))
+    entry = BallotOption(
+        "ALPHA", "Tutorial", "01", "A", 3.0,
+        (Session("Monday", 600, 660, weeks, "COM1"),), [],
+    )
+    text = render_snake([entry], provenance=Prov())
+    assert "best #1 (-14.0)" in text
+    assert "typical #3 (-19.0)" in text
+    assert "363" in text
+
+
+def test_render_snake_moves_interchangeable_to_continuation_line():
+    from kairos.ballot import BallotOption
+    from kairos.model import Session
+    from kairos.provenance import ClusterStats
+
+    class Prov:
+        total = 363
+
+        def cluster_stats(self, keys):
+            return ClusterStats(-14.0, -14.0, 29, 1, 1)
+
+    weeks = frozenset(range(1, 14))
+    entry = BallotOption(
+        "ALPHA", "Tutorial", "01", "A", 3.0,
+        (Session("Monday", 600, 660, weeks, "COM1"),), ["02", "03"],
+    )
+    lines = render_snake([entry], provenance=Prov()).splitlines()
+    body = [line for line in lines if "ALPHA" in line or "interchangeable" in line]
+    assert "interchangeable" not in body[0]
+    assert "interchangeable with 02, 03" in body[1]
+
+
+def test_render_snake_handles_missing_stats():
+    from kairos.ballot import BallotOption
+    from kairos.model import Session
+
+    class Prov:
+        total = 363
+
+        def cluster_stats(self, keys):
+            return None
+
+    weeks = frozenset(range(1, 14))
+    entry = BallotOption(
+        "ALPHA", "Tutorial", "01", "A", 3.0,
+        (Session("Monday", 600, 660, weeks, "COM1"),), [],
+    )
+    text = render_snake([entry], provenance=Prov())
+    assert "ALPHA" in text
+
+
+def test_render_snake_columns_align_across_mixed_widths():
+    from kairos.ballot import BallotOption
+    from kairos.model import Session
+    from kairos.provenance import ClusterStats
+
+    class Prov:
+        total = 363
+
+        def cluster_stats(self, keys):
+            return ClusterStats(-14.0, -19.0, 29, 1, 3)
+
+    weeks = frozenset(range(1, 14))
+    short = BallotOption(
+        "A1", "Tutorial", "1", "A", 3.0,
+        (Session("Monday", 600, 660, weeks, "COM1"),), [],
+    )
+    wide = BallotOption(
+        "LONGMODULE", "Laboratory", "L12", "B", 3.0,
+        (
+            Session("Tuesday", 840, 960, weeks, "COM1"),
+            Session("Friday", 840, 960, weeks, "COM1"),
+        ),
+        [],
+    )
+    lines = [
+        line
+        for line in render_snake([short, wide], provenance=Prov()).splitlines()
+        if "best #" in line
+    ]
+    assert len(lines) == 2
+    assert lines[0].index("best #") == lines[1].index("best #")
+    assert lines[0].index("typical #") == lines[1].index("typical #")
+
+
+def test_render_snake_empty_entries():
+    class Prov:
+        total = 0
+
+        def cluster_stats(self, keys):
+            return None
+
+    assert render_snake([], provenance=Prov()) == ""
+    assert render_snake([]) == ""
+
+
 def test_class_warnings_pairing_mixed_suppresses_only_impossible(config):
     from kairos.search import EnumeratedSpace
 
