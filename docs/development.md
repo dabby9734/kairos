@@ -51,11 +51,10 @@ so async tests (the TUI ones) need no `@pytest.mark.asyncio` marker — any
 | `test_tui_state.py` | `kairos/tui/state.py` | `AppState`/`normalize_difficulties` — enumeration/ranking on construction, weight/difficulty/preference changes and reranking, priority reordering without a full rescore, ballot helpers, lock/unlock of timeslots, config-YAML roundtrip, the raw-cache and arrangement-structure reuse/rebuild rules, provenance exposure, and `selectable_groups` filtering (including the "collapses to one slot_sig" exclusion). |
 | `test_tui_widgets.py` | `kairos/tui/widgets.py` | `clamp` and `Slider` — value clamping/stepping and that the rendered label contains both name and value. |
 
-(22 files under `tests/`, one per row above — `__init__.py` and `conftest.py`
-are support files, not test modules. The 6 `test_coursereg_*.py` files are
-the CourseReg advisor's suite, added alongside `kairos/coursereg/`; `ls
-tests/` at writing time shows 24 entries total, matching the 22 rows above
-plus those two support files.)
+(22 test files, one per row above. The 6 `test_coursereg_*.py` files are the
+CourseReg advisor's suite, added alongside `kairos/coursereg/`. `ls tests/`
+also shows three non-test entries: the `__init__.py` and `conftest.py`
+support files and the `data/` fixture directory.)
 
 The coursereg fetch tests (`test_coursereg_fetch.py`) run against a golden
 fixture, `tests/data/courserekt_sample.html` — a hand-trimmed courserekt.
