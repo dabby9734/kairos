@@ -75,8 +75,8 @@ alternatives), and copy the "share" link from the timetable's share button.
 
     .venv/bin/kairos init "https://nusmods.com/timetable/sem-1/share?CS1231S=TUT:07A,LEC:2&..."
 
-Quote the URL — it contains `&` characters your shell will otherwise treat as
-job control.
+Quote the URL — it contains `&` characters, and without the quotes your shell
+will cut the URL short at the first one.
 
 `kairos init` will ask you two kinds of question, both of which shape the
 results later:
@@ -96,7 +96,7 @@ file directly — see the next section — then run `kairos run`.
 
 ## config.yaml reference
 
-Here's the config checked into this repo, as a concrete example:
+Here's a real generated config, as a concrete example:
 
 ```yaml
 acad_year: 2026-2027

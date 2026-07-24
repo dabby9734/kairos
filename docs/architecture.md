@@ -178,7 +178,8 @@ objects, including per-slot bids expanded to every sibling class number that
 shares a footprint (the venue-twin case, resurfaced from `space.members`
 after being collapsed away by `enumerate_clashfree`). The module-level
 `search(groups, config)` convenience wrapper (`rank(enumerate_clashfree(...),
-config)`) exists but has no caller anywhere in the codebase or tests.
+config)`) has no caller in the package itself — `cli.py` and the TUI call the
+two stages separately — but the tests use it as their entry point.
 
 **`scoring.py`** — the pure arithmetic behind every criterion; imports only
 `model.DAYS`. `WEEKDAYS = DAYS[:5]`. `COMPONENT_LEGEND` holds the exact
