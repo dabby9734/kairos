@@ -426,3 +426,75 @@ def test_class_warnings_pairing_mixed_suppresses_only_impossible(config):
     # Tutorial CAN pair (offered Monday) -> still warned; Lab can't -> suppressed.
     assert any("ALPHA TUT" in w and "same-day" in w for w in warnings)
     assert not any("ALPHA LAB" in w and "same-day" in w for w in warnings)
+
+
+def test_render_snake_rich_reverses_highlighted_rows():
+    # Reverse video, NOT blink: Terminal.app ignores SGR 5.
+    from kairos.ballot import BallotOption
+    from kairos.model import Session
+    from kairos.output import render_snake_rich
+    from kairos.provenance import ClusterStats
+
+    class Prov:
+        total = 10
+
+        def cluster_stats(self, keys):
+            return ClusterStats(-14.0, -14.0, 5, 1, 1)
+
+    weeks = frozenset(range(1, 14))
+    hit = BallotOption(
+        "ALPHA", "Tutorial", "01", "A", 3.0,
+        (Session("Monday", 600, 660, weeks, "COM1"),), [],
+    )
+    miss = BallotOption(
+        "BETA", "Laboratory", "L1", "A", 3.0,
+        (Session("Tuesday", 600, 660, weeks, "COM1"),), [],
+    )
+    text = render_snake_rich(
+        [hit, miss], Prov(), highlight=frozenset({("ALPHA", "Tutorial", "01")})
+    )
+    styles = {str(span.style) for span in text.spans}
+    assert "reverse" in styles
+    assert "blink" not in styles
+
+
+def test_render_snake_rich_without_highlight_has_no_reverse_spans():
+    from kairos.ballot import BallotOption
+    from kairos.model import Session
+    from kairos.output import render_snake_rich
+    from kairos.provenance import ClusterStats
+
+    class Prov:
+        total = 10
+
+        def cluster_stats(self, keys):
+            return ClusterStats(-14.0, -14.0, 5, 1, 1)
+
+    weeks = frozenset(range(1, 14))
+    entry = BallotOption(
+        "ALPHA", "Tutorial", "01", "A", 3.0,
+        (Session("Monday", 600, 660, weeks, "COM1"),), [],
+    )
+    text = render_snake_rich([entry], Prov(), highlight=frozenset())
+    assert all("reverse" not in str(span.style) for span in text.spans)
+
+
+def test_render_snake_rich_matches_plain_text():
+    from kairos.ballot import BallotOption
+    from kairos.model import Session
+    from kairos.output import render_snake, render_snake_rich
+    from kairos.provenance import ClusterStats
+
+    class Prov:
+        total = 10
+
+        def cluster_stats(self, keys):
+            return ClusterStats(-14.0, -14.0, 5, 1, 1)
+
+    weeks = frozenset(range(1, 14))
+    entry = BallotOption(
+        "ALPHA", "Tutorial", "01", "A", 3.0,
+        (Session("Monday", 600, 660, weeks, "COM1"),), [],
+    )
+    prov = Prov()
+    assert render_snake_rich([entry], prov).plain == render_snake([entry], provenance=prov)
