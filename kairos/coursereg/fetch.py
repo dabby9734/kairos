@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import asdict
 from html.parser import HTMLParser
+from pathlib import Path
+
+import requests
 
 from .model import UNLIMITED, DemandRecord
 
@@ -110,3 +115,44 @@ def parse_history_html(html: str, acad_year: str, semester: int) -> list[DemandR
     ]
     # Deterministic output order: course code, then round.
     return sorted(records, key=lambda r: (r.course, r.round))
+
+
+COURSEREKT_URL = "https://courserekt.vercel.app/"
+YEARS = ("2122", "2223", "2324", "2425", "2526")
+
+
+def fetch_semester(acad_year: str, semester: int) -> str:
+    resp = requests.post(
+        COURSEREKT_URL,
+        data={"year": acad_year, "semester": str(semester), "type": "ug"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.text
+
+
+def load_history(cache_dir: Path, refetch: bool = False) -> list[DemandRecord]:
+    """All UG demand records across every archived semester. Cache-first with
+    NO TTL: the upstream project is archived and its data frozen, so a cache
+    hit is always valid. `refetch` exists only as a repair hatch."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    records: list[DemandRecord] = []
+    for acad_year in YEARS:
+        for semester in (1, 2):
+            cache_file = cache_dir / f"{acad_year}-{semester}.json"
+            if cache_file.exists() and not refetch:
+                rows = json.loads(cache_file.read_text())
+                records.extend(DemandRecord(**row) for row in rows)
+                continue
+            try:
+                html = fetch_semester(acad_year, semester)
+            except requests.RequestException as exc:
+                raise SystemExit(
+                    f"error: courserekt.vercel.app unreachable and no cached data in "
+                    f"{cache_dir} — copy a friend's cache there (the data is frozen "
+                    f"and identical for everyone): {exc}"
+                )
+            parsed = parse_history_html(html, acad_year, semester)
+            cache_file.write_text(json.dumps([asdict(r) for r in parsed]))
+            records.extend(parsed)
+    return records

@@ -60,3 +60,55 @@ def test_parse_tolerates_orphan_td_outside_rows():
     html = SAMPLE.replace("<tbody>", "<tbody><td>ORPHAN</td>", 1)
     recs = by_key(parse_history_html(html, "2526", 1))
     assert ("CS2109S", 1) in recs  # real rows still parse; orphan ignored
+
+
+def _fake_fetch_factory(calls):
+    def fake_fetch(acad_year, semester):
+        calls.append((acad_year, semester))
+        return SAMPLE  # every semester serves the fixture page
+    return fake_fetch
+
+
+def test_load_history_fetches_all_semesters_and_caches(tmp_path, monkeypatch):
+    from kairos.coursereg import fetch
+
+    calls = []
+    monkeypatch.setattr(fetch, "fetch_semester", _fake_fetch_factory(calls))
+    records = fetch.load_history(tmp_path)
+    assert len(calls) == 10  # 5 years x 2 semesters
+    assert len(list(tmp_path.glob("*.json"))) == 10
+    # 3 fixture courses with data x 10 semesters... CS2109S has 3 rounds,
+    # GEQ1000 has 2, XX1000 none -> 5 records per semester
+    assert len(records) == 50
+
+    # Second call: pure cache, no fetches — the source is frozen, no TTL.
+    calls.clear()
+    again = fetch.load_history(tmp_path)
+    assert calls == [] and again == records
+
+
+def test_load_history_refetch_forces_network(tmp_path, monkeypatch):
+    from kairos.coursereg import fetch
+
+    calls = []
+    monkeypatch.setattr(fetch, "fetch_semester", _fake_fetch_factory(calls))
+    fetch.load_history(tmp_path)
+    calls.clear()
+    fetch.load_history(tmp_path, refetch=True)
+    assert len(calls) == 10
+
+
+def test_load_history_unreachable_without_cache_exits(tmp_path, monkeypatch):
+    import pytest
+    import requests
+
+    from kairos.coursereg import fetch
+
+    def down(acad_year, semester):
+        raise requests.ConnectionError("boom")
+
+    monkeypatch.setattr(fetch, "fetch_semester", down)
+    with pytest.raises(SystemExit) as exc:
+        fetch.load_history(tmp_path)
+    message = str(exc.value)
+    assert "error:" in message and str(tmp_path) in message
