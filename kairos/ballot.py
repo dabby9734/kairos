@@ -106,21 +106,37 @@ def all_options(result, config, provenance=None) -> dict:
             )
 
         options = []
-        for best, stats, choices in entries:
-            class_nos = [c.class_no for c in choices]
+        if provenance is None:
+            rounds = [[(best, stats, choices, c) for c in choices]
+                      for best, stats, choices in entries]
+            plan = [item for group in rounds for item in group]
+        else:
+            # Round-robin across clusters: every cluster's first class, then
+            # every cluster's second, and so on. A second copy of a timeslot
+            # only helps if the first was full, so it must never outrank fresh
+            # timeslot coverage under the 20-slot cap.
+            depth = max((len(choices) for _b, _s, choices in entries), default=0)
+            plan = [
+                (best, stats, choices, choices[round_no])
+                for round_no in range(depth)
+                for best, stats, choices in entries
+                if round_no < len(choices)
+            ]
+
+        for best, stats, choices, c in plan:
+            class_nos = [x.class_no for x in choices]
             score = stats.ceiling if stats is not None else best
-            for c in choices:
-                options.append(
-                    BallotOption(
-                        module=module,
-                        lesson_type=lesson_type,
-                        class_no=c.class_no,
-                        letter=chr(ord("A") + len(options)),
-                        best_score=score,
-                        sessions=c.sessions,
-                        tied_with=[n for n in class_nos if n != c.class_no],
-                    )
+            options.append(
+                BallotOption(
+                    module=module,
+                    lesson_type=lesson_type,
+                    class_no=c.class_no,
+                    letter=chr(ord("A") + len(options)),
+                    best_score=score,
+                    sessions=c.sessions,
+                    tied_with=[n for n in class_nos if n != c.class_no],
                 )
+            )
         if options:
             options_by_group[(module, lesson_type)] = options
     return options_by_group

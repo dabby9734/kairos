@@ -417,3 +417,100 @@ def test_ranked_options_forwards_provenance(config):
     })
     tut = ranked_options(result, config, provenance=prov)[("ALPHA", "Tutorial")]
     assert tut[0].class_no == "03"
+
+
+def test_twins_interleave_behind_distinct_timeslots(config):
+    # fake_result's ALPHA Tutorial has cluster {01,02} (twins, same footprint)
+    # and cluster {03} (a distinct timeslot). Without interleaving the order is
+    # 01, 02, 03 (both twins spent before 03 is reached); with it, the second
+    # copy of the {01,02} timeslot moves behind the distinct timeslot 03.
+    result = fake_result(config)
+    result.best_by_footprint = {k: 10.0 for k in result.best_by_footprint}
+    prov = FakeProvenance({
+        ("ALPHA", "Tutorial", "01"): (10.0, -10.0, 9),
+        ("ALPHA", "Tutorial", "02"): (10.0, -14.0, 5),
+        ("ALPHA", "Tutorial", "03"): (10.0, -14.0, 5),
+        ("BETA", "Laboratory", "L1"): (9.0, -10.0, 5),
+        ("BETA", "Laboratory", "L2"): (7.0, -10.0, 5),
+    })
+    tut = all_options(result, config, provenance=prov)[("ALPHA", "Tutorial")]
+    assert [o.class_no for o in tut] == ["01", "03", "02"]
+    # 01 is round 1 of the twin cluster; the fresh timeslot 03 jumps ahead of
+    # round 2's rerun of the same timeslot (02)
+    assert tut[1].class_no == "03" and tut[2].class_no == "02"
+
+
+def test_interleaving_puts_second_copies_after_all_firsts(config):
+    # Two clusters that each hold two twins: rounds must alternate, not group.
+    from kairos.model import Choice
+
+    def ch(no, day):
+        return Choice("ALPHA", "Tutorial", no, (sess(day),))
+
+    a1, a2 = ch("01", "Monday"), ch("02", "Monday")
+    b1, b2 = ch("03", "Tuesday"), ch("04", "Tuesday")
+    members = {("ALPHA", "Tutorial"): {a1.footprint: [a1, a2], b1.footprint: [b1, b2]}}
+    best = {
+        ("ALPHA", "Tutorial", a1.footprint): 10.0,
+        ("ALPHA", "Tutorial", b1.footprint): 10.0,
+    }
+    result = SearchResult(top=[], best_by_footprint=best, members=members, evaluated=2)
+    prov = FakeProvenance({
+        ("ALPHA", "Tutorial", "01"): (10.0, -10.0, 9),
+        ("ALPHA", "Tutorial", "02"): (10.0, -10.0, 9),
+        ("ALPHA", "Tutorial", "03"): (10.0, -14.0, 5),
+        ("ALPHA", "Tutorial", "04"): (10.0, -14.0, 5),
+    })
+    tut = all_options(result, config, provenance=prov)[("ALPHA", "Tutorial")]
+    assert [o.class_no for o in tut] == ["01", "03", "02", "04"]
+
+
+def test_interleaved_letters_stay_positional(config):
+    result = fake_result(config)
+    result.best_by_footprint = {k: 10.0 for k in result.best_by_footprint}
+    prov = FakeProvenance({
+        ("ALPHA", "Tutorial", "01"): (10.0, -10.0, 9),
+        ("ALPHA", "Tutorial", "02"): (10.0, -14.0, 5),
+        ("ALPHA", "Tutorial", "03"): (10.0, -14.0, 5),
+        ("BETA", "Laboratory", "L1"): (9.0, -10.0, 5),
+        ("BETA", "Laboratory", "L2"): (7.0, -10.0, 5),
+    })
+    tut = all_options(result, config, provenance=prov)[("ALPHA", "Tutorial")]
+    assert [o.letter for o in tut] == ["A", "B", "C"]
+
+
+def test_interleaving_preserves_tied_with(config):
+    result = fake_result(config)
+    result.best_by_footprint = {k: 10.0 for k in result.best_by_footprint}
+    prov = FakeProvenance({
+        ("ALPHA", "Tutorial", "01"): (10.0, -10.0, 9),
+        ("ALPHA", "Tutorial", "02"): (10.0, -14.0, 5),
+        ("ALPHA", "Tutorial", "03"): (10.0, -14.0, 5),
+        ("BETA", "Laboratory", "L1"): (9.0, -10.0, 5),
+        ("BETA", "Laboratory", "L2"): (7.0, -10.0, 5),
+    })
+    tut = all_options(result, config, provenance=prov)[("ALPHA", "Tutorial")]
+    by_no = {o.class_no: o for o in tut}
+    # fake_result's actual twin pair is {01,02} (same footprint); 03 is a
+    # distinct, untied timeslot. Interleaving reorders 02 and 03 but must not
+    # disturb which class numbers are recorded as each other's twins.
+    assert by_no["01"].tied_with == ["02"]
+    assert by_no["02"].tied_with == ["01"]
+    assert by_no["03"].tied_with == []
+
+
+def test_ranked_options_is_still_a_prefix_with_provenance(config):
+    result = fake_result(config)
+    result.best_by_footprint = {k: 10.0 for k in result.best_by_footprint}
+    prov = FakeProvenance({
+        ("ALPHA", "Tutorial", "01"): (10.0, -10.0, 9),
+        ("ALPHA", "Tutorial", "02"): (10.0, -14.0, 5),
+        ("ALPHA", "Tutorial", "03"): (10.0, -14.0, 5),
+        ("BETA", "Laboratory", "L1"): (9.0, -10.0, 5),
+        ("BETA", "Laboratory", "L2"): (7.0, -10.0, 5),
+    })
+    config.alternatives_per_module = 2
+    full = all_options(result, config, provenance=prov)
+    capped = ranked_options(result, config, provenance=prov)
+    for key, options in capped.items():
+        assert options == full[key][: len(options)]
