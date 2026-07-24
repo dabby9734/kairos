@@ -29,6 +29,44 @@ def gamma_state(alpha_json, gamma_json, config):
     return AppState.from_parts(cfg, groups)
 
 
+async def test_warnings_paint_opaque_theme_surface(state, tmp_path):
+    # Regression: warning text was a theme-blind inline colour ("dim yellow") on
+    # a transparent background, so it vanished when a light terminal showed
+    # through. It must now carry the `warn` class -> opaque $surface background +
+    # the theme's legible $text-warning foreground.
+    from textual.color import Color
+
+    state.config.preferences.latest_end = 540          # 09:00: every class ends later
+    state.config.preferences.weights["time_window"] = 5  # so the check is active
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        wt = app.query_one("#warnings-text", Static)
+        assert "warn" in wt.classes and "ok" not in wt.classes
+        assert wt.styles.background.a == 1.0            # opaque, not see-through
+        expected = Color.parse(app.get_css_variables()["text-warning"])
+        assert wt.styles.color == expected
+        # entering ballot view clears the styling so no empty coloured box lingers
+        await pilot.press("b")
+        await pilot.pause()
+        assert "warn" not in wt.classes and "ok" not in wt.classes
+
+
+async def test_all_criteria_met_uses_success_class(state, tmp_path):
+    # The success line gets the same opaque-surface treatment via the `ok` class.
+    from textual.color import Color
+
+    for name in state.config.preferences.weights:
+        state.config.preferences.weights[name] = 0     # every check disabled -> no warnings
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        wt = app.query_one("#warnings-text", Static)
+        assert "ok" in wt.classes and "warn" not in wt.classes
+        assert wt.styles.background.a == 1.0
+        assert wt.styles.color == Color.parse(app.get_css_variables()["text-success"])
+
+
 def test_fmt_timeslot_distinguishes_physical_from_online(gamma_state):
     from kairos.tui.app import _fmt_timeslot
 

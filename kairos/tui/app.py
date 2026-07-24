@@ -99,6 +99,14 @@ class KairosApp(App):
     #top-row { height: 20%; }
     #tt-list { width: 45%; border: round $panel; border-title-color: $text; }
     #warnings { width: 1fr; border: round $panel; border-title-color: $text; }
+    /* Pair the theme's legible warning/success text with an opaque theme
+       surface, so contrast holds whether the app paints its own (dark) surface
+       or the terminal's background (which may be light) shows through a
+       transparent widget. A foreground colour alone is not enough: $text-warning
+       resolves against the active theme, so on a dark theme it is a light amber
+       that vanishes on a light terminal. */
+    #warnings-text.warn { background: $surface; color: $text-warning; }
+    #warnings-text.ok { background: $surface; color: $text-success; }
     #classes-row { height: 20%; }
     #slot-list { width: 45%; border: round $panel; border-title-color: $text; }
     #timeslot-list { width: 1fr; border: round $panel; border-title-color: $text; }
@@ -257,6 +265,7 @@ class KairosApp(App):
         top = self.state.top_arrangements()
         if not top:
             detail.update("no clash-free timetables")
+            warnings_text.set_classes([])
             warnings_text.update("")
             return
         if self.ballot_mode:
@@ -270,6 +279,7 @@ class KairosApp(App):
                     self.state.ballot_snake(), self.state.provenance, highlight=highlight
                 )
             )
+            warnings_text.set_classes([])
             warnings_text.update("")
             return
         arr = top[self.selected]
@@ -284,9 +294,11 @@ class KairosApp(App):
             unpairable_slots=self.state.unpairable_slots,
         )
         if warnings:
-            warnings_text.update(Text("\n".join(warnings), style="dim yellow"))
+            warnings_text.set_classes("warn")
+            warnings_text.update(Text("\n".join(warnings)))
         else:
-            warnings_text.update(Text("✓ all criteria met", style="dim green"))
+            warnings_text.set_classes("ok")
+            warnings_text.update(Text("✓ all criteria met"))
         detail.update(
             Group(
                 Text(render_breakdown(arr.score, arr.breakdown)),
