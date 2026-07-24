@@ -112,3 +112,16 @@ def test_load_history_unreachable_without_cache_exits(tmp_path, monkeypatch):
         fetch.load_history(tmp_path)
     message = str(exc.value)
     assert "error:" in message and str(tmp_path) in message
+
+
+def test_load_history_corrupt_cache_exits_with_refetch_hint(tmp_path, monkeypatch):
+    import pytest
+
+    from kairos.coursereg import fetch
+
+    monkeypatch.setattr(fetch, "fetch_semester", _fake_fetch_factory([]))
+    fetch.load_history(tmp_path)
+    (tmp_path / "2122-1.json").write_text("[{\"cours")  # truncated write
+    with pytest.raises(SystemExit) as exc:
+        fetch.load_history(tmp_path)
+    assert "error:" in str(exc.value) and "--refetch" in str(exc.value)

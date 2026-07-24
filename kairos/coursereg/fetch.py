@@ -141,7 +141,13 @@ def load_history(cache_dir: Path, refetch: bool = False) -> list[DemandRecord]:
         for semester in (1, 2):
             cache_file = cache_dir / f"{acad_year}-{semester}.json"
             if cache_file.exists() and not refetch:
-                rows = json.loads(cache_file.read_text())
+                try:
+                    rows = json.loads(cache_file.read_text())
+                except json.JSONDecodeError:
+                    raise SystemExit(
+                        f"error: cache file {cache_file} is corrupt — "
+                        "re-run with --refetch to rebuild it"
+                    )
                 records.extend(DemandRecord(**row) for row in rows)
                 continue
             try:
