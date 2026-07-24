@@ -78,16 +78,17 @@ alternatives), and copy the "share" link from the timetable's share button.
 Quote the URL — it contains `&` characters your shell will otherwise treat as
 job control.
 
-`kairos init` will ask you two things per module, both of which shape the
-scoring later:
+`kairos init` will ask you two kinds of question, both of which shape the
+results later:
 
-- **A difficulty rating from 1 to 5 for each class component** (lecture,
-  tutorial, lab, ...), defaulting to 3 if you just press enter. This feeds
-  the "daily overload" criterion — a day stacked with several high-difficulty
-  classes gets penalised even if it isn't literally clashing.
-- **A priority order for your modules, most important first**, defaulting to
-  the order the modules appeared in your share URL. This decides which
-  module's classes get first pick of ballot slots when scores tie (see the
+- **A difficulty rating from 1 to 5 for each class component of each module**
+  (lecture, tutorial, lab, ...), defaulting to 3 if you just press enter.
+  This feeds the "daily overload" criterion — a day stacked with several
+  high-difficulty classes gets penalised even if it isn't literally clashing.
+- **A priority order for your modules, most important first** — asked once,
+  at the end, defaulting to the order the modules appeared in your share URL.
+  This sets the column order of the ballot's snake: every module's best
+  option is listed in this order before any module's second-best (see the
   snake ordering above).
 
 This writes `config.yaml` in the current directory. From here you tweak that
@@ -209,11 +210,11 @@ Key by key:
 - **`alternatives_per_module`** — how many backup choices to guarantee per
   balloted group before kairos starts filling the rest of the 20 slots with
   whichever group's next option scores best.
-- **`top_n`** — how many distinct top-scoring timetables to print (CLI) or
-  list (TUI).
-- **`max_arrangements`** — caps how many arrangements the TUI keeps around
-  for its live list. This only bounds the TUI's display; it doesn't change
-  what the CLI searches or how many timetables it evaluates.
+- **`top_n`** — how many top-scoring timetables `kairos run` prints in full.
+  CLI only; it doesn't affect the TUI's list.
+- **`max_arrangements`** — caps how many arrangements the TUI's Timetables
+  pane lists. TUI only; it doesn't change what the CLI searches, prints, or
+  how many timetables it evaluates.
 
 ## Running it: kairos run
 
@@ -224,15 +225,18 @@ The first line tells you how big the search space was:
     evaluated 363 clash-free timetable shapes (363 distinct arrangements)
 
 "Shapes" is the number of distinct clash-free combinations of classes kairos
-found — every class swapped one at a time counts as a different shape.
-"Distinct arrangements" is that count after merging shapes that differ only
-by which interchangeable twin was picked (e.g. two lab sections at the exact
-same day and time, or the same class running on alternating teaching weeks) —
-those don't change anything you'd experience, so they're collapsed into one
-arrangement with multiple valid class numbers. The two numbers match here
-because this particular config has no such twins; when they differ, the
-second number is the one that matters for "how many genuinely different
-options do I have."
+found. Classes that are outright identical in time — two lab sections at the
+same day, time, and teaching weeks, differing only by venue — are merged
+*before* this count, so they never inflate it (this run has several such
+pairs, like CS2030S LAB 10A/10B, which is why the ballot later says
+"interchangeable with"). "Distinct arrangements" is the shape count after one
+further merge: shapes that differ only by *week-based* twins — the same slot
+on the same day and time, but running on alternating teaching weeks — are
+collapsed into a single arrangement with multiple valid class numbers, since
+your week looks the same either way. The two numbers match in this run
+because this module combination has no week-based twins to collapse; when
+they differ, the second number is the one that answers "how many genuinely
+different timetables do I have."
 
 Next, `top_n` timetables print in full, best first. Each one has a score
 breakdown, a week grid, and a ready-to-open NUSMods link:
