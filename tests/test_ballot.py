@@ -490,6 +490,7 @@ def test_interleaving_preserves_tied_with(config):
         ("BETA", "Laboratory", "L2"): (7.0, -10.0, 5),
     })
     tut = all_options(result, config, provenance=prov)[("ALPHA", "Tutorial")]
+    assert [o.class_no for o in tut] == ["01", "03", "02"]
     by_no = {o.class_no: o for o in tut}
     # fake_result's actual twin pair is {01,02} (same footprint); 03 is a
     # distinct, untied timeslot. Interleaving reorders 02 and 03 but must not
