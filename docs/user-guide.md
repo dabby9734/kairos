@@ -455,14 +455,14 @@ independent per-course queues"*.
 
 - **SAFE** — recent same-semester rounds were comfortably under-subscribed
   (demand well below the number of seats). Should get in at almost any rank.
-- **LIKELY** — one notch friendlier than the raw historical trend alone
-  would say, because of your tier nudge (`core` always nudges friendlier;
-  `ue` can too, from an already-`SAFE` trend).
+- **LIKELY** — one notch off the raw historical trend because of your
+  profile: either a `CONTESTED` trend softened by your `core`-tier nudge, or
+  a `SAFE` trend hardened by your `ue`-tier nudge.
 - **CONTESTED** — demand and vacancy have been roughly even lately. This is
   where your rank genuinely decides the outcome.
-- **TOUGH** — one notch harsher than the raw trend, from your tier nudge
-  (`ue` always nudges harsher; `core` can too, pulling a `LONG_SHOT` trend
-  back to merely `TOUGH`).
+- **TOUGH** — the mirror case: either a `CONTESTED` trend hardened by your
+  `ue`-tier nudge, or a `LONG_SHOT` trend softened by your `core`-tier nudge
+  to merely `TOUGH`.
 - **LONG_SHOT** — recent rounds were consistently and heavily
   oversubscribed. Expect to miss it most cycles, whatever rank you give it.
 - **NO_DATA** — no history exists for this exact semester+round combination

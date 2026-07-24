@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ..advisor import dossier_rows, leverage_warnings, suggested_order, verdict
-from ..model import RANK_CAP, TIERS, DemandRecord, Profile, profile_to_yaml
+from ..model import RANK_CAP, TIERS, Profile, profile_to_yaml
 
 
 class AdvisorState:

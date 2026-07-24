@@ -4,7 +4,7 @@ import math
 import statistics
 from dataclasses import dataclass
 
-from .model import RANK_CAP, UNLIMITED, DemandRecord, Profile
+from .model import RANK_CAP, UNLIMITED, Profile
 
 SAFE = "SAFE"
 LIKELY = "LIKELY"
