@@ -120,3 +120,32 @@ def test_indices_align_with_rank_arrangements(groups, config):
         )
         assert [a.score for a in capped] == [a.score for a in full[:limit]]
         assert [a.assignment for a in capped] == [a.assignment for a in full[:limit]]
+
+
+def test_index_alignment_holds_under_ties(groups, config):
+    # The distinct-score fixture above can never exercise tie-order: nlargest
+    # only risks diverging from a stable descending sort when scores are equal.
+    # Zero every weight (same technique as test_single_distinct_score_yields_one_tier)
+    # so every arrangement ties, then pin alignment at the ASSIGNMENT level --
+    # equal scores alone can't catch a tie-order swap between two tied arrangements.
+    for name in list(config.preferences.weights):
+        config.preferences.weights[name] = 0
+    space = enumerate_clashfree(groups)
+    scored = score_combos(space, config)
+    structure = build_arrangement_structure(space)
+    provenance = arrangement_provenance(space, config, scored=scored, structure=structure)
+    full = rank_arrangements(space, config, scored=scored, structure=structure)
+    assert len(set(full_a.score for full_a in full)) == 1  # sanity: genuinely tied
+
+    for limit in (1, 2, len(full)):
+        capped = rank_arrangements(
+            space, config, limit=limit, scored=scored, structure=structure
+        )
+        assert [a.assignment for a in capped] == [a.assignment for a in full[:limit]]
+
+    for index, arrangement in enumerate(full):
+        keys = {
+            (c.module, c.lesson_type, c.class_no)
+            for c in arrangement.assignment.values()
+        }
+        assert keys.issubset(provenance.by_arrangement[index])
