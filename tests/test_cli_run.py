@@ -166,3 +166,44 @@ def test_run_reports_irreconcilable(tmp_path, config_file, monkeypatch, capsys):
     with pytest.raises(SystemExit) as exc:
         main(["--config", str(config_file), "run"])
     assert "no clash-free timetable" in str(exc.value)
+
+
+def test_run_reports_both_counts_and_annotates_ballot(
+    tmp_path, config_file, monkeypatch, capsys, alpha_json, beta_json
+):
+    # The header must state the arrangement total, because the ballot's
+    # annotation denominators count arrangements while `evaluated` counts combos.
+    import re
+
+    out = run_cli(
+        tmp_path, config_file, monkeypatch, capsys,
+        {"ALPHA": alpha_json, "BETA": beta_json},
+    )
+    assert re.search(
+        r"evaluated \d+ clash-free timetable shapes \(\d+ distinct arrangements\)", out
+    )
+    assert "best #" in out
+    assert "typical #" in out
+
+
+def test_cli_timetables_are_arrangement_ranked(
+    tmp_path, config_file, monkeypatch, capsys, alpha_json, beta_json
+):
+    # Cross-surface agreement: the CLI's "timetable #1" must be the first
+    # ARRANGEMENT, so a ballot row's "best #t" is comparable against it.
+    from kairos.api import build_groups, semester_timetable
+    from kairos.config import load_config
+    from kairos.search import enumerate_clashfree, prepare_groups, rank_arrangements
+
+    out = run_cli(
+        tmp_path, config_file, monkeypatch, capsys,
+        {"ALPHA": alpha_json, "BETA": beta_json},
+    )
+    cfg = load_config(config_file)
+    groups = prepare_groups(
+        build_groups("ALPHA", semester_timetable(alpha_json, 1))
+        + build_groups("BETA", semester_timetable(beta_json, 1)),
+        cfg,
+    )
+    arrangements = rank_arrangements(enumerate_clashfree(groups), cfg, limit=cfg.top_n)
+    assert f"score: {arrangements[0].score:+.2f}" in out

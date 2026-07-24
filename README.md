@@ -3,7 +3,7 @@
 An NUS course optimiser. Searches every valid combination of your modules' tutorial/lab/recitation/sectional
 slots, scores them against your preferences, and prints:
 
-1. the top-N timetables (with NUSMods share links),
+1. the top-N distinct timetable arrangements (with NUSMods share links) — `top_n` in `config.yaml` controls how many distinct timetable arrangements to display,
 2. ranked backup choices per balloted group, and
 3. a snake-order ballot ranking (max 20 entries) ready for tutorial registration.
 
