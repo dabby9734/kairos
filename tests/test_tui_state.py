@@ -62,9 +62,7 @@ def test_move_priority_reorders_without_rescore(state):
 
 
 def test_ballot_helpers(state):
-    options = state.ballot_options()
     snake = state.ballot_snake()
-    assert isinstance(options, dict)
     assert isinstance(snake, list)
 
 
@@ -131,12 +129,14 @@ def test_to_config_yaml_roundtrips(tmp_path, state):
 
 
 def test_set_lock_shrinks_and_keeps_twins(state):
+    from kairos.ballot import ranked_options
+
     before = len(state.space.combos)
     assert state.set_lock("ALPHA", "TUT", "02") is True
     assert state.is_locked("ALPHA", "TUT")
     assert len(state.space.combos) < before
     # locking the slot keeps its interchangeable twins (02/03) in the ballot
-    opts = state.ballot_options()[("ALPHA", "Tutorial")]
+    opts = ranked_options(state.result, state.config)[("ALPHA", "Tutorial")]
     assert {"02", "03"} <= {o.class_no for o in opts}
 
 
@@ -358,6 +358,33 @@ def test_unpairable_rebuilt_on_lock_and_restored_on_rejected_lock(config):
     before_rejected = state._unpairable
     assert state.set_lock("ALPHA", "TUT", "T1") is False  # empties the space -> rejected
     assert state._unpairable is before_rejected  # restored on rollback
+
+
+def test_state_exposes_provenance_over_all_arrangements(state):
+    from kairos.search import rank_arrangements
+
+    assert state.provenance is not None
+    assert state.provenance.total == len(rank_arrangements(state.space, state.config))
+
+
+def test_provenance_ignores_max_arrangements_cap(alpha_json, beta_json, config):
+    # arrangements is capped for the ListView; provenance must not be, or the
+    # TUI's "of N" would disagree with the CLI's.
+    cfg = copy.deepcopy(config)
+    cfg.max_arrangements = 1
+    groups = build_groups("ALPHA", semester_timetable(alpha_json, 1)) + build_groups(
+        "BETA", semester_timetable(beta_json, 1)
+    )
+    st = AppState.from_parts(cfg, groups)
+    assert len(st.arrangements) == 1
+    assert st.provenance.total > 1
+
+
+def test_reweight_refreshes_provenance(state):
+    before = state.provenance
+    state.config.preferences.weights["lunch"] = 9
+    state.reweight()
+    assert state.provenance is not before
 
 
 def test_offered_timeslots_collapses_twins_and_sorts(state):

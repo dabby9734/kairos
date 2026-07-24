@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from .. import ballot
 from ..model import DAYS, LESSON_ABBREV, fmt_clock
+from ..provenance import arrangement_provenance
 from ..search import (
     EnumeratedSpace,
     build_arrangement_structure,
@@ -12,6 +13,7 @@ from ..search import (
     prepare_groups,
     rank,
     rank_arrangements,
+    score_combos,
     score_raw,
     weight_scored,
 )
@@ -67,6 +69,7 @@ class AppState:
     space: EnumeratedSpace
     result: object = None
     arrangements: list = None
+    provenance: object = None          # arrangement_provenance(space); UNCAPPED
     base_groups: list = None           # raw groups, for re-locking rebuilds
     _raw_cache: list = None            # cached score_raw(space); reused by reweight()
     _arr_structure: list = None        # cached build_arrangement_structure(space); space-change only
@@ -117,6 +120,12 @@ class AppState:
         # sizes result.top (the raw timetable list). The arrangement grouping is
         # reused from the cached _arr_structure (rebuilt only on a space change).
         self.result = rank(self.space, self.config, scored=scored)
+        # Uncapped on purpose: arrangements below is capped at
+        # config.max_arrangements to bound the ListView, but provenance
+        # denominators must match the CLI's totals.
+        self.provenance = arrangement_provenance(
+            self.space, self.config, scored=scored, structure=self._arr_structure
+        )
         self.arrangements = rank_arrangements(
             self.space, self.config, limit=self.config.max_arrangements,
             scored=scored, structure=self._arr_structure,
@@ -166,6 +175,7 @@ class AppState:
         snapshot = (
             {m: dict(v) for m, v in self.config.locked.items()},
             self.groups, self.space, self.result, self.arrangements,
+            self.provenance,
             self._raw_cache, self._arr_structure, self._unpairable,
         )
         mutate()
@@ -173,6 +183,7 @@ class AppState:
         if not space.combos:
             (self.config.locked, self.groups, self.space,
              self.result, self.arrangements,
+             self.provenance,
              self._raw_cache, self._arr_structure, self._unpairable) = snapshot
             return False
         self.groups = prepared
@@ -291,11 +302,8 @@ class AppState:
     def top_arrangements(self) -> list:
         return self.arrangements
 
-    def ballot_options(self) -> dict:
-        return ballot.ranked_options(self.result, self.config)
-
     def ballot_snake(self) -> list:
-        full = ballot.all_options(self.result, self.config)
+        full = ballot.all_options(self.result, self.config, provenance=self.provenance)
         return ballot.snake(ballot.fill_to_cap(full, self.config), self.config)
 
     def to_config_yaml(self) -> dict:
