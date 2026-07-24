@@ -48,8 +48,8 @@ class _TableParser(HTMLParser):
                 self.rounds.append(int(match.group(1)))
         elif tag == "td" and self.in_td:
             self.in_td = False
-            assert self._row is not None
-            self._row.append(" ".join(self._text))
+            if self._row is not None:
+                self._row.append(" ".join(self._text))
         elif tag == "tr" and self._row:
             self.rows.append(self._row)
             self._row = None

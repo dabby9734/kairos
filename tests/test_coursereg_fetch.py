@@ -52,3 +52,11 @@ def test_parse_unrecognisable_structure_raises():
     with pytest.raises(SystemExit) as exc:
         parse_history_html("<html><body>maintenance</body></html>", "2526", 1)
     assert "error:" in str(exc.value)
+
+
+def test_parse_tolerates_orphan_td_outside_rows():
+    from kairos.coursereg.fetch import parse_history_html
+
+    html = SAMPLE.replace("<tbody>", "<tbody><td>ORPHAN</td>", 1)
+    recs = by_key(parse_history_html(html, "2526", 1))
+    assert ("CS2109S", 1) in recs  # real rows still parse; orphan ignored
