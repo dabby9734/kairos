@@ -20,9 +20,12 @@
   this.
 - **I/O lives at the edges**: `api.py` (network + a 24h on-disk cache),
   `cli.py` (argparse, stdout), `tui/` (Textual). All three entrypoints —
-  `kairos init`, `kairos run`, `kairos tui` — assemble the same core pipeline
-  from the same handful of functions; they differ only in what they do with
-  the result.
+  `kairos init`, `kairos run`, `kairos tui` — share the same
+  fetch-and-build front end (`api.fetch_module` → `api.build_groups` →
+  `model` types), but only `run` and `tui` go on to run the search → score →
+  rank → ballot pipeline; `init` stops after fetching, prompting for
+  difficulties/priority, and writing `config.yaml` — it never touches
+  `prepare_groups`, scoring, ranking, or the ballot.
 - **Performance shape**: scoring is split into one expensive,
   weight-independent pass over every clash-free combo
   (`search.score_raw`), followed by a cheap re-weighting pass
@@ -92,7 +95,9 @@ venue — the search's notion of "occupies the same space"), plus its own
 `clashes(other)` (true if any session pair clashes). `ChoiceGroup` (mutable:
 `module, lesson_type, choices`) has a `key` property.
 
-**`api.py`** — the only network boundary. `normalise_weeks(weeks)` turns a
+**`api.py`** — the only network boundary; imports `requests` (the package's
+sole third-party network dependency) plus `model`'s `Session`/`Choice`/
+`ChoiceGroup`/`parse_time`. `normalise_weeks(weeks)` turns a
 NUSMods week list into a `frozenset`, or assumes all 13 teaching weeks for
 date-ranged (irregular) modules. `fetch_module(acad_year, code, cache_dir,
 ttl_hours=24.0)` serves from a JSON cache file if it's younger than
@@ -105,7 +110,8 @@ that semester. `build_groups(code, timetable)` groups raw lesson entries by
 lesson type then class number and constructs `Session`/`Choice`/
 `ChoiceGroup` objects, sorted by lesson type and class number.
 
-**`config.py`** — the YAML schema and its defaults. `DEFAULT_BALLOTED =
+**`config.py`** — the YAML schema and its defaults; imports `yaml` and
+`model`'s `LESSON_ABBREV`/`parse_clock`. `DEFAULT_BALLOTED =
 ["TUT", "LAB", "REC", "SEC"]` and `DEFAULT_PREFERENCES` (the six criteria's
 default weights). `Preferences` (parsed clock-int `earliest_start`,
 `latest_end`, `lunch_start`, `lunch_end`, `max_difficulty_per_day`,
@@ -121,6 +127,9 @@ difficulties, or a `priority` entry naming an unknown module.
 `load_config(path)` reads the YAML file and delegates to it.
 
 **`search.py`** — the enumeration and ranking engine; the largest module.
+Imports `heapq`/`itertools`, `model` (`LESSON_ABBREV`, `ChoiceGroup`,
+`week_label`), and `scoring` (`_combine`, `_fragment`, `compute_raw`,
+`pairing_impossibility`, `weight_raw`).
 `prepare_groups(groups, config)` narrows each group: `fixed` is checked
 first (pins one class number, `SystemExit` if it doesn't exist, and the
 group is finalized with `continue` before `locked` is ever read — so `fixed`
@@ -265,7 +274,11 @@ arrangement — reusing `AppState.arrangements` (capped at
 TUI's ballot denominators disagree with the CLI's.
 
 **`output.py`** — presentation only; string/Rich builders shared by
-`cli.py`'s prints and the TUI's `Static` widgets. It renders already-scored,
+`cli.py`'s prints and the TUI's `Static` widgets. Imports `model` (`DAYS`,
+`LESSON_ABBREV`, `fmt_time`) and `scoring` (`COMPONENT_LEGEND`,
+`_merged_intervals`, `pairing_impossibility`, `tough_day_peaks`);
+`render_snake_rich` alone lazily imports `rich.text.Text`, so the plain-text
+paths stay Rich-free. It renders already-scored,
 already-assigned data — it never touches `EnumeratedSpace` or ranking.
 `WEEKDAYS`, `GRID_HOURS = range(8, 21)`, `CELL = 8` are the week-grid layout
 constants. `_render_days(assignment, extra_days=None)` always includes
@@ -288,7 +301,12 @@ belonging to a selected arrangement — deliberately reverse, not blink, since
 Terminal.app ignores SGR 5.
 
 **`cli.py`** — the process entrypoint (`pyproject.toml` registers `kairos =
-"kairos.cli:main"`). `parse_share_url(url)` regex-matches
+"kairos.cli:main"`). Imports `argparse`/`datetime`/`re`/`urllib.parse`,
+`yaml`, the sibling modules `api`, `ballot`, `output`, `search`, `config`
+(`DEFAULT_BALLOTED`, `DEFAULT_PREFERENCES`, `load_config`), `model`
+(`LESSON_ABBREV`), `provenance` (`arrangement_provenance`), and `tui.app`
+(`run_app`) — everything except `tui.startup`, which is imported lazily (see
+below). `parse_share_url(url)` regex-matches
 `/timetable/sem-(\d)/share` and parses the querystring into `{MODULE:
 {abbrev: class_no}}`, raising `SystemExit` on anything unparseable.
 `guess_acad_year(today=None)` returns the AY starting this calendar year if
@@ -341,7 +359,13 @@ acad_year=None)` picks url-vs-file-vs-`SystemExit`, runs the migration, and
 returns `AppState.from_parts(config, groups)`.
 
 **`tui/state.py`** — the TUI's mutable session object; every keypress or
-slider funnels through `AppState`. `SelectableGroup` (frozen: `module,
+slider funnels through `AppState`. Imports `ballot`, `model` (`DAYS`,
+`LESSON_ABBREV`, `fmt_clock`), `provenance` (`arrangement_provenance`),
+`scoring` (`pairing_impossibility`), and the bulk of `search`'s public
+surface (`EnumeratedSpace`, `build_arrangement_structure`,
+`enumerate_clashfree`, `find_irreconcilable`, `prepare_groups`, `rank`,
+`rank_arrangements`, `score_raw`, `weight_scored`) — no Textual imports, so
+the state object is testable without a running app. `SelectableGroup` (frozen: `module,
 lesson_type, abbrev, balloted, current_class_no, locked`) is one row of the
 Classes pane; its docstring is explicit that it's deliberately distinct from
 `search.SlotBid` — a `SlotBid` is something the ballot bids for and may not
@@ -383,7 +407,12 @@ the moment it gets locked. `to_config_yaml()` is the exact inverse of
 `config.config_from_dict`, used by the `s` save-config action.
 
 **`tui/app.py`** — the single Textual `App` subclass, `KairosApp`, plus
-`run_app(state, config_path)`. `_os_clipboard_copy(text)` shells out to
+`run_app(state, config_path)`. Imports `shutil`/`subprocess`/`sys`, `yaml`,
+Rich (`Group`, `Text`), Textual (`App`, containers, and the stock widgets it
+composes), `ballot`, `model`, `output` (`class_warnings`,
+`render_breakdown`, `render_snake`, `render_snake_rich`, `share_url`),
+`.render` (`module_colours`, `render_week_rich`), and `.widgets` (`Slider`).
+`_os_clipboard_copy(text)` shells out to
 `pbcopy`/`clip`/`wl-copy`/`xclip`/`xsel` depending on platform — the primary
 clipboard path, because Textual's OSC-52 `copy_to_clipboard` is unreliable
 (e.g. ignored by macOS Terminal.app). `KairosApp.BINDINGS` covers `1`–`4`
