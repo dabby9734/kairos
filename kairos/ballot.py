@@ -23,12 +23,18 @@ class BallotOption:
     tied_with: list
 
 
-def all_options(result, config) -> dict:
+def all_options(result, config, provenance=None) -> dict:
     """Every viable ballot option per balloted group, best-first, UNCAPPED.
 
     Letters are assigned positionally over the full list, so any prefix of a
     group's list carries correct letters — which is what lets ranked_options
-    and fill_to_cap both slice this without recomputing."""
+    and fill_to_cap both slice this without recomputing.
+
+    When `provenance` is given, clusters are ranked
+    (-ceiling, -median, -support, class_no) instead of (-best_score, class_no).
+    best_score ties are the normal case, not the exception, so the old fallback
+    to class number was an arbitrary ordering presented as a real one. Omitting
+    `provenance` reproduces that old ordering exactly."""
     # Interchangeability via CLASH-SET equality (cheap + sound). Build the set of
     # viable footprints (those in some clash-free timetable) with a representative
     # choice each, then two same-slot footprints of a group are interchangeable
@@ -77,33 +83,66 @@ def all_options(result, config) -> dict:
 
         # class numbers within a cluster fold in venue-twins (I1 for the ballot);
         # sort by class_no for deterministic letters / ordering (M4)
-        scored = []
+        entries = []
         for cl in clusters:
             cl_choices = sorted(cl["choices"], key=lambda c: c.class_no)
-            scored.append((cl["best"], cl_choices))
-        scored.sort(key=lambda item: (-item[0], item[1][0].class_no))
+            stats = None
+            if provenance is not None:
+                stats = provenance.cluster_stats(
+                    {(module, lesson_type, c.class_no) for c in cl_choices}
+                )
+            entries.append((cl["best"], stats, cl_choices))
+
+        if provenance is None:
+            entries.sort(key=lambda e: (-e[0], e[2][0].class_no))
+        else:
+            entries.sort(
+                key=lambda e: (
+                    -(e[1].ceiling if e[1] else e[0]),
+                    -(e[1].median if e[1] else e[0]),
+                    -(e[1].support if e[1] else 0),
+                    e[2][0].class_no,
+                )
+            )
 
         options = []
-        for best, choices in scored:
-            class_nos = [c.class_no for c in choices]
-            for c in choices:
-                options.append(
-                    BallotOption(
-                        module=module,
-                        lesson_type=lesson_type,
-                        class_no=c.class_no,
-                        letter=chr(ord("A") + len(options)),
-                        best_score=best,
-                        sessions=c.sessions,
-                        tied_with=[n for n in class_nos if n != c.class_no],
-                    )
+        if provenance is None:
+            rounds = [[(best, stats, choices, c) for c in choices]
+                      for best, stats, choices in entries]
+            plan = [item for group in rounds for item in group]
+        else:
+            # Round-robin across clusters: every cluster's first class, then
+            # every cluster's second, and so on. A second copy of a timeslot
+            # only helps if the first was full, so it must never outrank fresh
+            # timeslot coverage under the 20-slot cap.
+            depth = max((len(choices) for _b, _s, choices in entries), default=0)
+            plan = [
+                (best, stats, choices, choices[round_no])
+                for round_no in range(depth)
+                for best, stats, choices in entries
+                if round_no < len(choices)
+            ]
+
+        for best, stats, choices, c in plan:
+            class_nos = [x.class_no for x in choices]
+            score = stats.ceiling if stats is not None else best
+            options.append(
+                BallotOption(
+                    module=module,
+                    lesson_type=lesson_type,
+                    class_no=c.class_no,
+                    letter=chr(ord("A") + len(options)),
+                    best_score=score,
+                    sessions=c.sessions,
+                    tied_with=[n for n in class_nos if n != c.class_no],
                 )
+            )
         if options:
             options_by_group[(module, lesson_type)] = options
     return options_by_group
 
 
-def ranked_options(result, config) -> dict:
+def ranked_options(result, config, provenance=None) -> dict:
     """Per-group options truncated to config.alternatives_per_module.
 
     This is the "backup choices per balloted group" view. The ballot itself uses
@@ -113,7 +152,7 @@ def ranked_options(result, config) -> dict:
     Every key here maps to a non-empty list — not because this function filters,
     but because all_options only ever emits groups that have options. With a cap
     <= 0, no groups appear at all (returns empty dict)."""
-    full = all_options(result, config)
+    full = all_options(result, config, provenance=provenance)
     if config.alternatives_per_module <= 0:
         return {}
     return {key: opts[: config.alternatives_per_module] for key, opts in full.items()}

@@ -143,16 +143,17 @@ def weight_scored(raw_entries: list, config) -> list:
     return scored
 
 
-def _score_combos(space: EnumeratedSpace, config) -> list:
+def score_combos(space: EnumeratedSpace, config) -> list:
     """Score every clash-free combo exactly once. Returns
     [(total, breakdown, assignment, combo), ...] so callers (rank,
-    rank_arrangements, state.retune) can share a single scoring pass (M5)."""
+    rank_arrangements, arrangement_provenance, state.retune) can share a single
+    scoring pass (M5)."""
     return weight_scored(score_raw(space, config), config)
 
 
 def rank(space: EnumeratedSpace, config, scored=None) -> SearchResult:
     if scored is None:
-        scored = _score_combos(space, config)
+        scored = score_combos(space, config)
     heap: list = []
     best_fp: dict = {}
     seq = 0
@@ -276,7 +277,7 @@ def _make_arrangement(entry, slot_opts, config, variant_count, space) -> "Arrang
     )
 
 
-def _candidates_from_structure(structure, scored) -> list:
+def candidates_from_structure(structure, scored) -> list:
     """Build (score, entry, slot_opts, variant_count) candidates from a cached
     structure and a fresh scored list. Collapsed templates pick the highest-scoring
     member (tiebreak by class_keys), reproducing the original per-group `min`."""
@@ -307,11 +308,11 @@ def rank_arrangements(space, config, limit=None, scored=None, structure=None) ->
     build_arrangement_structure; pass a cached `structure` to skip re-grouping
     (state.AppState does this). Omitting it rebuilds inline — behavior-preserving."""
     if scored is None:
-        scored = _score_combos(space, config)
+        scored = score_combos(space, config)
     if structure is None:
         structure = build_arrangement_structure(space)
 
-    candidates = _candidates_from_structure(structure, scored)
+    candidates = candidates_from_structure(structure, scored)
 
     # Select winners by -score (stable in insertion order for ties, matching a
     # full sort), then build bids/venue-expansion ONLY for the survivors.

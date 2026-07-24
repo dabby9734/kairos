@@ -195,16 +195,102 @@ def render_options(options_by_group: dict) -> str:
     return "\n".join(lines)
 
 
-def render_snake(entries: list) -> str:
-    lines = []
+def render_snake(entries: list, provenance=None) -> str:
+    """The ballot, in submission order.
+
+    With `provenance`, each row carries the ceiling and median score of the
+    arrangements containing it, as `#tier (score)`. The raw score is shown
+    alongside the tier because it is directly comparable to the `score:` line on
+    each displayed timetable -- that comparability is the point of the
+    annotation. Both columns render unconditionally so the layout is stable
+    across runs; `best` is frequently constant, which is accepted."""
+    if not entries:
+        return ""
+    if provenance is None:
+        lines = []
+        for position, option in enumerate(entries, 1):
+            tie = (
+                f"  (interchangeable with {', '.join(option.tied_with)})"
+                if option.tied_with
+                else ""
+            )
+            lines.append(
+                f"{position:2}. {option.module} "
+                f"{LESSON_ABBREV.get(option.lesson_type, option.lesson_type)}"
+                f"[{option.class_no}]  choice {option.letter}  "
+                f"{_when(option.sessions)}{tie}"
+            )
+        return "\n".join(lines)
+
+    rows = []
     for position, option in enumerate(entries, 1):
-        tie = (
-            f"  (interchangeable with {', '.join(option.tied_with)})"
-            if option.tied_with
-            else ""
+        abbrev = LESSON_ABBREV.get(option.lesson_type, option.lesson_type)
+        stats = provenance.cluster_stats(
+            {
+                (option.module, option.lesson_type, class_no)
+                for class_no in [option.class_no, *option.tied_with]
+            }
         )
+        best = "" if stats is None else f"best #{stats.ceiling_tier} ({stats.ceiling:+.1f})"
+        typical = (
+            "" if stats is None else f"typical #{stats.median_tier} ({stats.median:+.1f})"
+        )
+        rows.append(
+            (
+                f"{position:2}. {option.module} {abbrev}[{option.class_no}]",
+                f"choice {option.letter}",
+                _when(option.sessions),
+                best,
+                typical,
+                option.tied_with,
+            )
+        )
+
+    widths = [max(len(row[i]) for row in rows) for i in range(5)]
+    lines = [
+        "best    = ceiling: the best timetable containing this class",
+        f"typical = median of the {provenance.total} clash-free timetables containing it",
+        "",
+    ]
+    for row in rows:
         lines.append(
-            f"{position:2}. {option.module} {LESSON_ABBREV.get(option.lesson_type, option.lesson_type)}"
-            f"[{option.class_no}]  choice {option.letter}  {_when(option.sessions)}{tie}"
+            f"{row[0]:<{widths[0]}}  {row[1]:<{widths[1]}}  {row[2]:<{widths[2]}}  "
+            f"{row[3]:<{widths[3]}}  {row[4]}".rstrip()
         )
+        if row[5]:
+            lines.append(
+                f"{'':<{widths[0]}}    ↳ interchangeable with {', '.join(row[5])}"
+            )
     return "\n".join(lines)
+
+
+def render_snake_rich(entries: list, provenance, highlight=frozenset()):
+    """render_snake as a Rich Text, with rows belonging to the selected
+    arrangement in reverse video.
+
+    Reverse, not blink: Terminal.app ignores SGR 5, so a blinking affordance is
+    invisible for some users."""
+    from rich.text import Text
+
+    plain = render_snake(entries, provenance=provenance)
+    text = Text(plain)
+    if not highlight or not entries:
+        return text
+
+    lines = plain.splitlines()
+    offset = 0
+    row = 0
+    for line in lines:
+        length = len(line)
+        is_continuation = "↳ interchangeable with" in line
+        if not is_continuation and line.strip() and line[:3].strip().rstrip(".").isdigit():
+            option = entries[row]
+            keys = {
+                (option.module, option.lesson_type, class_no)
+                for class_no in [option.class_no, *option.tied_with]
+            }
+            if keys & highlight:
+                text.stylize("reverse", offset, offset + length)
+            row += 1
+        offset += length + 1
+    return text

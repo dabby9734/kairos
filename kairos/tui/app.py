@@ -14,7 +14,9 @@ from textual.widgets import Footer, Header, Label, ListItem, ListView, Static, T
 
 from .. import ballot
 from ..model import DAYS, LESSON_ABBREV, fmt_clock, fmt_time
-from ..output import class_warnings, render_breakdown, render_snake, share_url
+from ..output import (
+    class_warnings, render_breakdown, render_snake, render_snake_rich, share_url,
+)
 from .render import module_colours, render_week_rich
 from .widgets import Slider
 
@@ -258,7 +260,16 @@ class KairosApp(App):
             warnings_text.update("")
             return
         if self.ballot_mode:
-            detail.update(render_snake(self.state.ballot_snake()))
+            highlight = frozenset()
+            if self.state.provenance is not None and self.selected < len(
+                self.state.provenance.by_arrangement
+            ):
+                highlight = self.state.provenance.by_arrangement[self.selected]
+            detail.update(
+                render_snake_rich(
+                    self.state.ballot_snake(), self.state.provenance, highlight=highlight
+                )
+            )
             warnings_text.update("")
             return
         arr = top[self.selected]
@@ -353,7 +364,7 @@ class KairosApp(App):
     def action_export_ballot(self) -> None:
         out = self.config_path.parent / "ballot.txt"
         entries = self.state.ballot_snake()
-        out.write_text(render_snake(entries))
+        out.write_text(render_snake(entries, provenance=self.state.provenance))
         missing = ballot.shortfall(entries)
         if missing:
             self.notify(

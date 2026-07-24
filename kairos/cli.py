@@ -11,6 +11,7 @@ import yaml
 from . import api, ballot, output, search
 from .config import DEFAULT_BALLOTED, DEFAULT_PREFERENCES, load_config
 from .model import LESSON_ABBREV
+from .provenance import arrangement_provenance
 from .tui.app import run_app
 
 # NOTE: `build_state` is imported lazily inside cmd_tui (not at module level)
@@ -125,7 +126,9 @@ def cmd_run(args) -> None:
         groups.extend(api.build_groups(code, api.semester_timetable(data, config.semester)))
     groups = search.prepare_groups(groups, config)
 
-    result = search.search(groups, config)
+    space = search.enumerate_clashfree(groups)
+    scored = search.score_combos(space, config)
+    result = search.rank(space, config, scored=scored)
     if not result.top:
         pair = search.find_irreconcilable(groups)
         if pair:
@@ -137,20 +140,32 @@ def cmd_run(args) -> None:
             )
         raise SystemExit("error: no clash-free timetable found")
 
-    print(f"evaluated {result.evaluated} clash-free timetable shapes\n")
-    for rank, (total, breakdown, assignment) in enumerate(result.top, 1):
-        print(f"=== timetable #{rank} ===")
-        print(output.render_breakdown(total, breakdown))
-        print(output.render_week(assignment))
-        print(output.share_url(assignment, config.semester))
+    structure = search.build_arrangement_structure(space)
+    prov = arrangement_provenance(space, config, scored=scored, structure=structure)
+    arrangements = search.rank_arrangements(
+        space, config, limit=config.top_n, scored=scored, structure=structure
+    )
+
+    # Both counts: `evaluated` counts combos, provenance denominators count
+    # arrangements. They coincide until collapsing occurs; showing both is what
+    # makes the ballot's "of N" self-explaining.
+    print(
+        f"evaluated {result.evaluated} clash-free timetable shapes "
+        f"({prov.total} distinct arrangements)\n"
+    )
+    for position, arrangement in enumerate(arrangements, 1):
+        print(f"=== timetable #{position} ===")
+        print(output.render_breakdown(arrangement.score, arrangement.breakdown))
+        print(output.render_week(arrangement.assignment))
+        print(output.share_url(arrangement.assignment, config.semester))
         print()
 
-    full = ballot.all_options(result, config)
+    full = ballot.all_options(result, config, provenance=prov)
     print("=== backup choices per balloted group ===")
-    print(output.render_options(ballot.ranked_options(result, config)))
+    print(output.render_options(ballot.ranked_options(result, config, provenance=prov)))
     entries = ballot.snake(ballot.fill_to_cap(full, config), config)
     print(f"\n=== ballot ranking (snake order, cap {ballot.BALLOT_CAP}) ===")
-    print(output.render_snake(entries))
+    print(output.render_snake(entries, provenance=prov))
     missing = ballot.shortfall(entries)
     if missing:
         print(

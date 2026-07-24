@@ -8,14 +8,6 @@ from kairos.scoring import score_assignment
 from kairos.search import EnumeratedSpace, find_irreconcilable, prepare_groups, rank_arrangements, search
 
 
-@pytest.fixture
-def groups(alpha_json, beta_json, config):
-    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1)) + build_groups(
-        "BETA", semester_timetable(beta_json, 1)
-    )
-    return prepare_groups(gs, config)
-
-
 def test_prepare_groups_applies_fixed(groups):
     beta_lec = next(g for g in groups if g.key == ("BETA", "Lecture"))
     assert [c.class_no for c in beta_lec.choices] == ["1"]  # config.fixed pins it
@@ -152,10 +144,10 @@ def test_search_equals_enumerate_then_rank(groups, config):
 def test_rank_scored_param_is_behavior_preserving(groups, config):
     # rank must yield identical top/best_by_footprint whether or not a pre-scored
     # list is supplied (Fix D / M5: score every combo only once per retune).
-    from kairos.search import _score_combos
+    from kairos.search import score_combos
     space = enumerate_clashfree(groups)
     a = rank(space, config)
-    b = rank(space, config, scored=_score_combos(space, config))
+    b = rank(space, config, scored=score_combos(space, config))
     assert [t for t, _, _ in a.top] == [t for t, _, _ in b.top]
     assert a.best_by_footprint == b.best_by_footprint
     assert a.evaluated == b.evaluated
@@ -252,7 +244,7 @@ def test_rank_arrangements_lists_venue_twins(config):
 
 def test_rank_arrangements_scored_param_is_behavior_preserving(config):
     # Passing a pre-scored list must produce identical arrangements (Fix D / M5).
-    from kairos.search import _score_combos
+    from kairos.search import score_combos
     odd = frozenset({1, 3, 5})
     even = frozenset({2, 4, 6})
     lec = Choice("ALPHA", "Lecture", "1", (Session("Monday", 600, 720, ALL_WEEKS, "COM1"),))
@@ -260,7 +252,7 @@ def test_rank_arrangements_scored_param_is_behavior_preserving(config):
     tut_even = Choice("ALPHA", "Tutorial", "02", (Session("Monday", 840, 900, even, "COM1"),))
     space = _space((lec, tut_odd), (lec, tut_even))
     a = rank_arrangements(space, config)
-    b = rank_arrangements(space, config, scored=_score_combos(space, config))
+    b = rank_arrangements(space, config, scored=score_combos(space, config))
     key = lambda arrs: [(x.score, [(bd.module, bd.lesson_type, bd.options) for bd in x.bids]) for x in arrs]
     assert key(a) == key(b)
 
@@ -304,14 +296,14 @@ def test_rank_arrangements_materializing_winners_matches_slice(config):
 
 def test_weight_scored_matches_score_combos(groups, config):
     from kairos.search import (
-        _score_combos,
+        score_combos,
         enumerate_clashfree,
         score_raw,
         weight_scored,
     )
 
     space = enumerate_clashfree(groups)
-    one_shot = _score_combos(space, config)
+    one_shot = score_combos(space, config)
     split = weight_scored(score_raw(space, config), config)
     # identical totals, breakdowns, assignments, combos in the same order
     assert [s[0] for s in split] == [s[0] for s in one_shot]
