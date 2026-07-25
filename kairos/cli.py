@@ -59,6 +59,18 @@ def _prompt_difficulty(code: str, abbrev: str) -> int:
         print("please enter a number from 1 to 5")
 
 
+def _prompt_choice(prompt: str, valid: dict, default: str) -> str:
+    # `valid` maps accepted (lowercase) input to its canonical value, so
+    # shorthands like "c" -> "core" ride along for free.
+    while True:
+        answer = input(prompt).strip().lower()
+        if not answer:
+            return default
+        if answer in valid:
+            return valid[answer]
+        print(f"please enter one of: {', '.join(sorted(set(valid.values())))}")
+
+
 def cmd_init(args) -> None:
     config_path = Path(args.config)
     if config_path.exists():

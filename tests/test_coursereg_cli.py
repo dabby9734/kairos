@@ -29,3 +29,20 @@ def test_advise_uses_own_config_and_cache_defaults():
     finally:
         cli.cmd_advise = original
     assert captured == {"config": "coursereg.yaml", "cache_dir": "data/coursereg"}
+
+
+def test_prompt_choice_default_shorthand_and_reprompt(monkeypatch, capsys):
+    from kairos.cli import _prompt_choice
+
+    tier_choices = {
+        "core": "core", "major": "major", "ue": "ue",
+        "c": "core", "m": "major", "u": "ue",
+    }
+    answers = iter(["", "U", "core!", "c"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+
+    assert _prompt_choice("tier? ", tier_choices, "major") == "major"  # bare Enter
+    assert _prompt_choice("tier? ", tier_choices, "major") == "ue"  # shorthand, any case
+    # "core!" is rejected with a hint, then "c" is accepted
+    assert _prompt_choice("tier? ", tier_choices, "major") == "core"
+    assert "core, major, ue" in capsys.readouterr().out
