@@ -39,14 +39,14 @@ validation loops in the existing `_prompt_difficulty` style.
 New `_advise_setup(url, config_path)` helper in `kairos/cli.py` (all I/O
 stays in the CLI layer; `coursereg/model` stays pure):
 
-1. If `config_path` exists → `coursereg.yaml already exists — overwrite?
+1. `parse_share_url(url)` (existing) → `(semester, selections)`. If the
+   semester is not 1 or 2 (special-term links, `sem-3`/`sem-4`), exit
+   immediately — *before any prompts, including the overwrite prompt* —
+   with `error: kairos advise models semesters 1 and 2 only — this link is
+   for a special term`.
+2. If `config_path` exists → `coursereg.yaml already exists — overwrite?
    [y/N]`; anything but `y` raises `SystemExit("aborted")`, matching
    `cmd_init`. Overwriting discards any saved ranking.
-2. `parse_share_url(url)` (existing) → `(semester, selections)`. If the
-   semester is not 1 or 2 (special-term links, `sem-3`/`sem-4`), exit
-   immediately — *before any prompts* — with
-   `error: kairos advise models semesters 1 and 2 only — this link is for a
-   special term`.
 3. Prompt seniority, round, then tier per course in link order.
 4. Assemble `{seniority, semester, round, candidates}` and pass through the
    existing pure `profile_from_dict` (free validation; `ranked` stays

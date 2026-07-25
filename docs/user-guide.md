@@ -436,7 +436,8 @@ year of study `[2]`, the round `[2]`, and each course's tier
 written and the TUI opens immediately with your fresh profile. If
 `coursereg.yaml` already exists you're asked before it's overwritten
 (this discards any saved ranking); special-term links (`sem-3`/`sem-4`)
-are rejected up front since the advisor models semesters 1 and 2 only.
+are rejected before any prompt since the advisor models semesters 1 and 2
+only.
 
 The first run fetches and permanently caches ten semesters of demand history
 (AY2021/2022 through AY2025/2026, both semesters) under `data/coursereg/`;
