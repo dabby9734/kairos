@@ -284,35 +284,3 @@ def render_snake(entries: list, provenance=None) -> str:
         if continuation is not None:
             lines.append(continuation)
     return "\n".join(lines)
-
-
-def render_snake_rich(entries: list, provenance, highlight=frozenset()):
-    """render_snake as a Rich Text, with rows belonging to the selected
-    arrangement in reverse video.
-
-    Reverse, not blink: Terminal.app ignores SGR 5, so a blinking affordance is
-    invisible for some users."""
-    from rich.text import Text
-
-    plain = render_snake(entries, provenance=provenance)
-    text = Text(plain)
-    if not highlight or not entries:
-        return text
-
-    lines = plain.splitlines()
-    offset = 0
-    row = 0
-    for line in lines:
-        length = len(line)
-        is_continuation = "↳ interchangeable with" in line
-        if not is_continuation and line.strip() and line[:3].strip().rstrip(".").isdigit():
-            option = entries[row]
-            keys = {
-                (option.module, option.lesson_type, class_no)
-                for class_no in [option.class_no, *option.tied_with]
-            }
-            if keys & highlight:
-                text.stylize("reverse", offset, offset + length)
-            row += 1
-        offset += length + 1
-    return text

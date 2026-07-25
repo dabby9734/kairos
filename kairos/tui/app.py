@@ -15,7 +15,7 @@ from textual.widgets import Footer, Header, Label, ListItem, ListView, Static, T
 from .. import ballot
 from ..model import DAYS, LESSON_ABBREV, fmt_clock, fmt_time
 from ..output import (
-    class_warnings, render_breakdown, render_snake, render_snake_rich, share_url,
+    class_warnings, render_breakdown, render_snake, share_url, snake_legend, snake_rows,
 )
 from .render import module_colours, render_week_rich
 from .widgets import Slider
@@ -111,6 +111,13 @@ class KairosApp(App):
     #slot-list { width: 45%; border: round $panel; border-title-color: $text; }
     #timeslot-list { width: 1fr; border: round $panel; border-title-color: $text; }
     #detail-scroll { height: 1fr; }
+    #ballot-view { height: 1fr; }
+    /* auto so a Saturday row or an extra overlap lane is never clipped;
+       max-height so a busy week can't crowd out the list below it. */
+    #ballot-grid { height: auto; max-height: 50%; }
+    #ballot-legend { height: auto; color: $text-muted; }
+    #ballot-list { height: 1fr; }
+    #ballot-list ListItem { height: auto; }
     """
 
     BINDINGS = [
@@ -139,6 +146,7 @@ class KairosApp(App):
         self.ballot_mode = False
         self._timeslots = []
         self._rows = []
+        self._ballot_entries = []
         self._current_class = None
         self.colours = module_colours(list(state.config.modules))
 
@@ -194,6 +202,17 @@ class KairosApp(App):
                     yield timeslot_list
                 with VerticalScroll(id="detail-scroll"):
                     yield Static(id="detail")
+                # Sibling of #detail-scroll, not a child: ballot view swaps which
+                # container is displayed rather than swapping content into one
+                # Static, because the ballot list needs to be a focusable ListView.
+                ballot_view = Vertical(
+                    Static(id="ballot-grid"),
+                    Static(id="ballot-legend"),
+                    ListView(id="ballot-list"),
+                    id="ballot-view",
+                )
+                ballot_view.display = False
+                yield ballot_view
         yield Footer()
 
     def on_mount(self) -> None:
@@ -269,16 +288,8 @@ class KairosApp(App):
             warnings_text.update("")
             return
         if self.ballot_mode:
-            highlight = frozenset()
-            if self.state.provenance is not None and self.selected < len(
-                self.state.provenance.by_arrangement
-            ):
-                highlight = self.state.provenance.by_arrangement[self.selected]
-            detail.update(
-                render_snake_rich(
-                    self.state.ballot_snake(), self.state.provenance, highlight=highlight
-                )
-            )
+            self._refresh_ballot_list()
+            self._refresh_ballot_grid()
             warnings_text.set_classes([])
             warnings_text.update("")
             return
@@ -311,6 +322,71 @@ class KairosApp(App):
             )
         )
 
+    def _ballot_preview(self, entry) -> tuple:
+        """The (module, lesson_type, sig) triple render_week_rich highlights for
+        a ballot entry. Built from the entry's sessions with exactly the fields
+        Choice.slot_sig uses (model.py), so it is comparable to the sigs the
+        renderer matches assignment choices against."""
+        return (
+            entry.module,
+            entry.lesson_type,
+            frozenset((s.day, s.start, s.end, s.online) for s in entry.sessions),
+        )
+
+    def _refresh_ballot_list(self) -> None:
+        """Rebuild the ballot list. Called when the entries or their membership
+        markers can change (config edits, arrangement selection, priority
+        reorder) -- never on cursor movement, which would reset the index."""
+        lst = self.query_one("#ballot-list", ListView)
+        legend = self.query_one("#ballot-legend", Static)
+        prev = lst.index
+        self._ballot_entries = self.state.ballot_snake()
+        highlight = frozenset()
+        if self.state.provenance is not None and self.selected < len(
+            self.state.provenance.by_arrangement
+        ):
+            highlight = self.state.provenance.by_arrangement[self.selected]
+        with self.prevent(ListView.Highlighted):
+            lst.clear()
+            if not self._ballot_entries:
+                legend.update("")
+                return
+            legend.update(Text("\n".join(snake_legend(self.state.provenance))))
+            for entry, line, continuation in snake_rows(
+                self._ballot_entries, self.state.provenance
+            ):
+                keys = {
+                    (entry.module, entry.lesson_type, class_no)
+                    for class_no in [entry.class_no, *entry.tied_with]
+                }
+                # A gutter marker, not reverse video: the ListView cursor is
+                # itself an inversion, so membership needs a separate channel.
+                mark = "●" if keys & highlight else " "
+                text = f"{mark} {line}"
+                if continuation is not None:
+                    text += f"\n  {continuation}"
+                lst.append(ListItem(Label(text)))
+            lst.index = min(prev or 0, len(self._ballot_entries) - 1)
+
+    def _refresh_ballot_grid(self) -> None:
+        """Redraw the pinned grid with the cursor row's slot previewed on the
+        selected timetable. Called on every ballot-list cursor move."""
+        grid = self.query_one("#ballot-grid", Static)
+        top = self.state.top_arrangements()
+        if not top:
+            grid.update(Text("no clash-free timetables"))
+            return
+        lst = self.query_one("#ballot-list", ListView)
+        preview = None
+        if lst.index is not None and 0 <= lst.index < len(self._ballot_entries):
+            preview = self._ballot_preview(self._ballot_entries[lst.index])
+        grid.update(
+            render_week_rich(
+                top[self.selected].assignment, self.colours,
+                preview=preview, agenda=False,
+            )
+        )
+
     # --- events ---
 
     def on_slider_changed(self, event: Slider.Changed) -> None:
@@ -337,18 +413,30 @@ class KairosApp(App):
             self._refresh_detail()
         elif lv.id == "timeslot-list":
             self._refresh_detail()
+        elif lv.id == "ballot-list":
+            self._refresh_ballot_grid()
 
     # --- actions ---
 
     def action_toggle_ballot(self) -> None:
         self.ballot_mode = not self.ballot_mode
-        self._refresh_detail()
+        self.query_one("#detail-scroll").display = not self.ballot_mode
+        self.query_one("#ballot-view").display = self.ballot_mode
+        if self.ballot_mode:
+            self._refresh_detail()
+            self.query_one("#ballot-list", ListView).focus()
+        else:
+            self.query_one("#slot-list", ListView).focus()
+            self._refresh_detail()
 
     def action_focus_timeslots(self) -> None:
         self.query_one("#timeslot-list", ListView).focus()
         self._refresh_detail()
 
     def action_focus_classes(self) -> None:
+        if self.ballot_mode:
+            self.action_toggle_ballot()   # Esc/← leaves ballot view
+            return
         self.query_one("#slot-list", ListView).focus()
         self._refresh_detail()
 

@@ -446,6 +446,111 @@ async def test_default_timeslot_cursor_inverts_not_previews(state, tmp_path):
         assert "(preview)" not in cap.get()
 
 
+async def test_ballot_view_toggles_container_display(state, tmp_path):
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.query_one("#detail-scroll").display is True
+        assert app.query_one("#ballot-view").display is False
+        await pilot.press("b")
+        await pilot.pause()
+        assert app.query_one("#detail-scroll").display is False
+        assert app.query_one("#ballot-view").display is True
+        assert app.query_one("#ballot-list", ListView).has_focus  # cursor is ready
+        await pilot.press("b")
+        await pilot.pause()
+        assert app.query_one("#detail-scroll").display is True
+        assert app.query_one("#ballot-view").display is False
+
+
+async def test_ballot_list_has_one_item_per_entry(state, tmp_path):
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.press("b")
+        await pilot.pause()
+        assert len(app.query_one("#ballot-list", ListView).children) == len(
+            app.state.ballot_snake()
+        )
+
+
+async def test_ballot_grid_is_compact(state, tmp_path):
+    from rich.console import Console
+
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.press("b")
+        await pilot.pause()
+        console = Console(width=200)
+        with console.capture() as cap:
+            console.print(app.query_one("#ballot-grid", Static)._Static__content)
+        text = cap.get()
+        assert "Mon" in text        # the grid is drawn
+        assert "@COM1" not in text  # ...without agenda lines
+
+
+async def test_ballot_preview_sig_matches_slot_sig(state, tmp_path):
+    # The preview triple must be directly comparable to the sigs render_week_rich
+    # matches against, i.e. Choice.slot_sig's (day, start, end, online) fields.
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.press("b")
+        await pilot.pause()
+        entry = app.state.ballot_snake()[0]
+        module, lesson_type, sig = app._ballot_preview(entry)
+        assert (module, lesson_type) == (entry.module, entry.lesson_type)
+        assert sig == frozenset(
+            (s.day, s.start, s.end, s.online) for s in entry.sessions
+        )
+
+
+async def test_ballot_membership_marker_tracks_selected_timetable(state, tmp_path):
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.press("b")
+        await pilot.pause()
+        labels = [
+            # textual 8.2.8: Label has no public `renderable`; `.content` is
+            # the working accessor (see _slot_labels/_timeslot_labels above).
+            str(item.query_one("Label").content)
+            for item in app.query_one("#ballot-list", ListView).children
+        ]
+        assert labels  # the fixture produces a non-empty ballot
+        assert all(line[0] in "● " for line in labels)       # marker occupies the gutter
+        assert any(line.startswith("●") for line in labels)  # some row is in timetable #1
+
+        # The marked rows are exactly the selected arrangement's classes.
+        marked = {
+            entry.class_no
+            for entry, line in zip(app._ballot_entries, labels)
+            if line.startswith("●")
+        }
+        highlight = app.state.provenance.by_arrangement[app.selected]
+        expected = {
+            class_no
+            for entry in app._ballot_entries
+            for class_no in [entry.class_no]
+            if {
+                (entry.module, entry.lesson_type, twin)
+                for twin in [entry.class_no, *entry.tied_with]
+            }
+            & highlight
+        }
+        assert marked == expected
+
+
+async def test_ballot_list_rebuild_preserves_cursor(state, tmp_path):
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.press("b")
+        await pilot.pause()
+        lst = app.query_one("#ballot-list", ListView)
+        lst.index = 2
+        await pilot.pause()
+        app._refresh_ballot_list()
+        await pilot.pause()
+        assert lst.index == 2  # a rebuild must not throw the cursor to the top
+
+
 async def test_week_grid_gets_more_height_than_the_top_row(state, tmp_path):
     app = KairosApp(state, tmp_path / "config.yaml")
     # Size is pinned: the assertion compares integer row counts, so it must not
