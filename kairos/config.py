@@ -50,6 +50,10 @@ class Config:
     top_n: int
     max_arrangements: int = 50
     locked: dict = field(default_factory=dict)  # code -> dict[abbrev, class_no]
+    # code -> dict[abbrev, list[class_no]]. Each class number designates its
+    # TIMESLOT, like `locked`; an absent or empty entry means every slot is
+    # acceptable, so a forgotten group can never submit nothing.
+    accept: dict = field(default_factory=dict)
     # (code, abbrev) pairs that migrate_fixed_to_locked moved out of `fixed`, so
     # errors can name the key the user's on-disk file still uses. Never persisted.
     migrated_from_fixed: set = field(default_factory=set)
@@ -115,6 +119,7 @@ def config_from_dict(data, source: str = "config") -> Config:
         top_n=int(data.get("top_n", 5)),
         max_arrangements=int(data.get("max_arrangements", 50)),
         locked=data.get("locked") or {},
+        accept=data.get("accept") or {},
     )
 
 

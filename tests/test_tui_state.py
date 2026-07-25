@@ -193,6 +193,15 @@ def test_locked_roundtrips_through_config(tmp_path, state):
     assert sorted(c.class_no for c in tut.choices) == ["02", "03"]
 
 
+def test_accept_roundtrips_through_config(tmp_path, state):
+    from kairos.config import config_from_dict
+
+    state.config.accept = {"ALPHA": {"TUT": ["02", "03"]}}
+    data = state.to_config_yaml()
+    assert data["accept"] == {"ALPHA": {"TUT": ["02", "03"]}}
+    assert config_from_dict(data).accept == {"ALPHA": {"TUT": ["02", "03"]}}
+
+
 def test_reweight_equivalent_to_full_retune(state):
     # A weight change via reweight() must match a full rescore at the same weights.
     state.config.preferences.weights["free_days"] = 9

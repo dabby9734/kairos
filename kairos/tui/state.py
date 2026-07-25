@@ -317,6 +317,7 @@ class AppState:
             },
             "fixed": self.config.fixed,
             "locked": self.config.locked,
+            "accept": self.config.accept,
             "priority": list(self.config.priority),
             "preferences": {
                 "earliest_start": fmt_clock(prefs.earliest_start),

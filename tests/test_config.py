@@ -101,3 +101,13 @@ def test_load_config_parses_locked(tmp_path):
 def test_load_config_defaults_locked_empty(tmp_path):
     cfg = load_config(write(tmp_path, BASE))
     assert cfg.locked == {}
+
+
+def test_load_config_parses_accept(tmp_path):
+    cfg = load_config(write(tmp_path, BASE + "\naccept:\n  ALPHA: {TUT: ['02', '03']}\n"))
+    assert cfg.accept == {"ALPHA": {"TUT": ["02", "03"]}}
+
+
+def test_load_config_defaults_accept_empty(tmp_path):
+    cfg = load_config(write(tmp_path, BASE))
+    assert cfg.accept == {}
