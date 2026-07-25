@@ -82,6 +82,63 @@ def test_prepare_groups_fixed_beats_locked(beta_json, config):
     assert [c.class_no for c in lec.choices] == ["1"]  # fixed wins
 
 
+def test_prepare_groups_accept_restricts_to_named_slots(alpha_json, config):
+    config.fixed = {}
+    config.accept = {"ALPHA": {"TUT": ["01"]}}
+    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))
+    prepared = prepare_groups(gs, config)
+    tut = next(g for g in prepared if g.key == ("ALPHA", "Tutorial"))
+    assert [c.class_no for c in tut.choices] == ["01"]  # Tue slot dropped
+
+
+def test_prepare_groups_accept_keeps_slot_twins(alpha_json, config):
+    # 02 designates the Tue 0900 SLOT, so its twin 03 comes along uninvited-but-correct
+    config.fixed = {}
+    config.accept = {"ALPHA": {"TUT": ["02"]}}
+    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))
+    prepared = prepare_groups(gs, config)
+    tut = next(g for g in prepared if g.key == ("ALPHA", "Tutorial"))
+    assert sorted(c.class_no for c in tut.choices) == ["02", "03"]
+
+
+def test_prepare_groups_accept_unions_multiple_slots(alpha_json, config):
+    config.fixed = {}
+    config.accept = {"ALPHA": {"TUT": ["01", "02"]}}
+    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))
+    prepared = prepare_groups(gs, config)
+    tut = next(g for g in prepared if g.key == ("ALPHA", "Tutorial"))
+    assert sorted(c.class_no for c in tut.choices) == ["01", "02", "03"]
+
+
+def test_prepare_groups_bad_accept_names_accept(alpha_json, config):
+    config.fixed = {}
+    config.accept = {"ALPHA": {"TUT": ["99"]}}
+    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))
+    with pytest.raises(SystemExit, match="config 'accept'"):
+        prepare_groups(gs, config)
+
+
+def test_prepare_groups_empty_accept_means_all(alpha_json, config):
+    # An empty list is "no restriction", NOT "accept nothing" — a stray `TUT: []`
+    # must never empty the space.
+    config.fixed = {}
+    config.accept = {"ALPHA": {"TUT": []}}
+    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))
+    prepared = prepare_groups(gs, config)
+    tut = next(g for g in prepared if g.key == ("ALPHA", "Tutorial"))
+    assert sorted(c.class_no for c in tut.choices) == ["01", "02", "03"]
+
+
+def test_prepare_groups_locked_beats_accept(alpha_json, config):
+    config.fixed = {}
+    config.locked = {"ALPHA": {"TUT": "02"}}
+    config.accept = {"ALPHA": {"TUT": ["01"]}}
+    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))
+    prepared = prepare_groups(gs, config)
+    tut = next(g for g in prepared if g.key == ("ALPHA", "Tutorial"))
+    assert sorted(c.class_no for c in tut.choices) == ["02", "03"]  # locked wins
+
+
 def test_search_footprint_dedup_and_clash(groups, config):
     result = search(groups, config)
     # ALPHA TUT footprints: {Mon}, {Tue} (02+03 collapse). BETA LAB: L1, L2.

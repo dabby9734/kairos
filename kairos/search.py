@@ -49,6 +49,27 @@ def prepare_groups(groups: list, config) -> list:
             chosen = [c for c in group.choices if c.slot_sig == sig]
             prepared.append(ChoiceGroup(group.module, group.lesson_type, chosen))
             continue
+        accepted = (config.accept.get(group.module) or {}).get(abbrev)
+        if accepted:
+            # Each number designates its SLOT, as `locked` does, so venue/week
+            # twins at an accepted slot stay available for the ballot. Resolved
+            # one number at a time rather than by set membership: an unknown
+            # number must raise, not silently narrow the space differently than
+            # the user asked.
+            sigs = set()
+            for number in accepted:
+                anchor = next(
+                    (c for c in group.choices if c.class_no == str(number)), None
+                )
+                if anchor is None:
+                    raise SystemExit(
+                        f"error: {group.module} {abbrev} class {number} "
+                        "(config 'accept') does not exist"
+                    )
+                sigs.add(anchor.slot_sig)
+            chosen = [c for c in group.choices if c.slot_sig in sigs]
+            prepared.append(ChoiceGroup(group.module, group.lesson_type, chosen))
+            continue
         if len(group.choices) > 1 and abbrev not in config.balloted_types:
             print(
                 f"warning: {group.module} {abbrev} has {len(group.choices)} options "
