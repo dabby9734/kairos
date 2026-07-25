@@ -436,18 +436,25 @@ async def test_ballot_membership_marker_tracks_selected_timetable(state, tmp_pat
         assert labels  # the fixture produces a non-empty ballot
         assert all(line[0] in "● " for line in labels)       # marker occupies the gutter
         assert any(line.startswith("●") for line in labels)  # some row is in timetable #1
-        # And the marker follows the selection: highlight is a different
-        # arrangement's key set, so at least one row's marker must change.
-        before = labels
-        if len(app.state.top_arrangements()) > 1:
-            app.selected = 1
-            app._refresh_ballot_list()
-            await pilot.pause()
-            after = [
-                str(item.query_one("Label").renderable)
-                for item in app.query_one("#ballot-list", ListView).children
-            ]
-            assert len(after) == len(before)
+
+        # The marked rows are exactly the selected arrangement's classes.
+        marked = {
+            entry.class_no
+            for entry, line in zip(app._ballot_entries, labels)
+            if line.startswith("●")
+        }
+        highlight = app.state.provenance.by_arrangement[app.selected]
+        expected = {
+            class_no
+            for entry in app._ballot_entries
+            for class_no in [entry.class_no]
+            if {
+                (entry.module, entry.lesson_type, twin)
+                for twin in [entry.class_no, *entry.tied_with]
+            }
+            & highlight
+        }
+        assert marked == expected
 
 
 async def test_ballot_list_rebuild_preserves_cursor(state, tmp_path):
