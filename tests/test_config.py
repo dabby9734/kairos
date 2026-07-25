@@ -26,7 +26,7 @@ priority: [BETA]
 def test_load_config_defaults_and_difficulty(tmp_path):
     cfg = load_config(write(tmp_path, BASE))
     assert cfg.balloted_types == ["TUT", "LAB", "REC", "SEC"]
-    assert cfg.preferences.earliest_start == 600  # default "10:00"
+    assert cfg.preferences.earliest_start == 540  # default "09:00"
     assert cfg.preferences.lunch_start == 660 and cfg.preferences.lunch_end == 840
     assert cfg.preferences.weights["tough_days"] == 5
     assert cfg.top_n == 5 and cfg.alternatives_per_module == 4
@@ -53,7 +53,7 @@ max_arrangements: 12
     )
     assert cfg.preferences.earliest_start == 540
     assert cfg.preferences.weights["gaps"] == 7
-    assert cfg.preferences.weights["lunch"] == 3  # unlisted weights keep defaults
+    assert cfg.preferences.weights["free_days"] == 6  # unlisted weights keep defaults
     assert cfg.top_n == 3
     assert cfg.max_arrangements == 12
 

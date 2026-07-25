@@ -200,9 +200,9 @@ Key by key:
 
   | Criterion | What it measures | Default weight |
   |---|---|---|
-  | `free_days` | whole free weekdays (more = better) | 4 |
+  | `free_days` | whole free weekdays (more = better) | 6 |
   | `gaps` | idle hours between classes (fewer = better) | 1 |
-  | `lunch` | days with no lunch break (fewer = better) | 3 |
+  | `lunch` | days with no lunch break (fewer = better) | 7 |
   | `same_day_pairing` | tutorials/labs sharing a day with their lecture (more = better) | 2 |
   | `time_window` | class-hours outside your preferred window (fewer = better) | 3 |
   | `tough_days` | difficulty piled past your daily cap (less = better) | 5 |

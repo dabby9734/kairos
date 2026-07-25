@@ -10,18 +10,18 @@ from .model import LESSON_ABBREV, parse_clock
 DEFAULT_BALLOTED = ["TUT", "LAB", "REC", "SEC"]
 
 DEFAULT_PREFERENCES = {
-    "earliest_start": "10:00",
+    "earliest_start": "09:00",
     "latest_end": "18:00",
-    "max_difficulty_per_day": 8,
+    "max_difficulty_per_day": 10,
     "lunch_window": ["11:00", "14:00"],
     "lunch_minutes": 60,
     "weights": {
         "time_window": 3,
         "tough_days": 5,
         "same_day_pairing": 2,
-        "free_days": 4,
+        "free_days": 6,
         "gaps": 1,
-        "lunch": 3,
+        "lunch": 7,
     },
 }
 

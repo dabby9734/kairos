@@ -79,7 +79,7 @@ def test_cmd_init_writes_config(tmp_path, monkeypatch, alpha_json, beta_json):
     assert written["locked"] == {"BETA": {"LEC": "1"}}
     assert written["priority"] == ["BETA", "ALPHA"]
     assert written["balloted_types"] == ["TUT", "LAB", "REC", "SEC"]
-    assert written["preferences"]["weights"]["free_days"] == 4
+    assert written["preferences"]["weights"]["free_days"] == 6
 
 
 def test_cmd_init_refuses_overwrite_without_confirmation(tmp_path, monkeypatch):
