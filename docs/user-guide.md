@@ -133,6 +133,7 @@ locked:
     LEC: '1'
   MA1522:
     LEC: '2'
+accept: {}
 priority:
 - CS2030S
 - CS1231S
@@ -190,6 +191,13 @@ Key by key:
   **Important:** `accept` does not deconflict. Two accepted slots in different
   modules can still overlap, and the ballot may list both; resolving that
   conflict is your call. This is what the TUI's `a` key writes.
+  **Quote your class numbers.** `accept` takes a YAML list, and
+  `yaml.safe_load` parses an unquoted `02` as the octal-looking number `2`
+  (YAML 1.1), not the string `"02"` — write `['01', '02', '08', '10']`, not
+  `[01, 02, 08, 10]`, or a class you typed correctly will fail with a number
+  you never typed (e.g. `class 2` instead of `class 02`). `fixed` and
+  `locked` share this trap, but their values are usually written by the TUI
+  rather than by hand, so it bites `accept` far more often.
 - **`priority`** — your modules, most important first. Used as the primary
   sort key for the ballot's snake ordering: every module's best remaining
   option is offered before any module's second-best. Within a module,
@@ -356,6 +364,9 @@ timeslot — a `✗` marks rejected slots. An untouched group is fully acceptabl
 so the first press *rejects* that one slot (restricting to it would duplicate
 the `l` lock behavior). Press `a` again to add it back. If toggling would
 leave no clash-free timetable for this group, kairos refuses with a toast.
+If the group is currently locked, `a` refuses outright with a toast telling
+you to unlock first — `prepare_groups` checks `locked` before `accept`, so an
+`accept` entry on a locked group would move nothing.
 
 Other keys: `[` / `]` move the highlighted module up/down the priority list
 (Priority tab); `b` toggles the ballot view, which pins a compact week grid above the ballot
@@ -389,12 +400,6 @@ Full keybinding table:
 
 ## FAQ / gotchas
 
-- **Accept writes while locked.** If you press `a` on a timeslot in a group
-  you've locked, the app records your choice to `accept` and shows `✗`
-  markers. However, `prepare_groups` checks `locked` first and ignores `accept`
-  for locked groups, so your timetable doesn't move until you unlock. Once you
-  clear the lock, `accept` takes effect. This is expected — the lock has
-  priority, and the accept list applies once it's gone.
 - **Online classes** (venue starting with `E-Learn`) don't count against your
   time window or lunch-break check, but they *do* count toward daily
   difficulty — a fully-online day can still trip the `tough_days` criterion.

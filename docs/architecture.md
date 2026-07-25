@@ -21,7 +21,7 @@ flowchart LR
     URL[NUSMods share URL] --> CLI[cli.py / tui.startup]
     CLI --> API[api.py<br/>fetch + 24h cache]
     API --> MODEL[model.py<br/>Session / Choice / ChoiceGroup]
-    MODEL --> PREP[search.prepare_groups<br/>apply fixed + locked]
+    MODEL --> PREP[search.prepare_groups<br/>apply fixed + locked + accept]
     PREP --> ENUM[search.enumerate_clashfree<br/>footprint-deduped backtracking]
     ENUM --> RAW[search.score_raw<br/>weight-independent, cached]
     RAW --> W[search.weight_scored<br/>cheap re-weight]
@@ -37,8 +37,9 @@ Stage by stage:
 1. **Resolve.** `cli` or `tui.startup` turns a share URL or an on-disk
    `config.yaml` into `ChoiceGroup`s, fetching each module through
    `api.fetch_module`.
-2. **Narrow.** `search.prepare_groups` applies `fixed` (pins a class number)
-   and `locked` (pins a slot signature).
+2. **Narrow.** `search.prepare_groups` applies `fixed` (pins a class number),
+   `locked` (pins a slot signature), and `accept` (restricts a group to a set
+   of slot signatures), in that precedence order.
 3. **Enumerate.** `search.enumerate_clashfree` backtracks over the narrowed
    groups and yields every clash-free combination.
 4. **Score.** `search.score_raw` computes six raw criteria per combo once;
@@ -105,8 +106,8 @@ The YAML schema and its defaults.
   and `weights`.
 - `Config` holds `acad_year, semester, balloted_types, modules, fixed,
   priority, preferences, alternatives_per_module, top_n,
-  max_arrangements=50, locked, migrated_from_fixed`. That last field exists
-  only to sharpen an error message after a TUI-side `fixed`→`locked`
+  max_arrangements=50, locked, accept, migrated_from_fixed`. That last field
+  exists only to sharpen an error message after a TUI-side `fixed`→`locked`
   migration; it never reaches disk.
 - `Config.difficulty(module, lesson_type_full)` defaults to 3.
 - `config_from_dict(data, source="config")` validates and builds a `Config`,
@@ -345,15 +346,30 @@ app.
 - `_rank_from(scored)` is the shared tail, building `result`, `provenance`
   (always uncapped), and `arrangements`
   (`rank_arrangements(limit=config.max_arrangements)`).
-- `_apply_locked_change(mutate)` snapshots every field locking touches,
-  applies the mutation, re-prepares, re-enumerates, and commits only when the
-  resulting space is non-empty. Otherwise it restores the snapshot and
-  returns `False`, which `tui/app.py` turns into a toast. `set_lock` and
-  `clear_lock` wrap it.
+- `_apply_config_dict_change(attr, mutate)` snapshots every field a
+  module→abbrev config dict touches (`config.<attr>` plus the derived
+  space/result/caches), applies the mutation, re-prepares, re-enumerates, and
+  commits only when the resulting space is non-empty. Otherwise it restores
+  the snapshot and returns `False`, which `tui/app.py` turns into a toast.
+  `_apply_locked_change` and `_apply_accept_change` are one-line wrappers
+  over it for `attr="locked"` and `attr="accept"`; `set_lock`/`clear_lock`
+  and `toggle_accept` wrap those in turn.
+- `toggle_accept(module, abbrev, lesson_type, class_no)` flips one timeslot's
+  membership of `config.accept`. An untouched group is materialised as every
+  offered slot minus the highlighted one — restricting to just the
+  highlighted slot on the first press would silently duplicate `l` — and
+  rejecting the last remaining slot is refused up front rather than written
+  as an empty list, since an empty `accept` list means "unrestricted", not
+  "reject everything" (see `accepted_sigs` below and search.py's truthiness
+  check).
+- `accepted_sigs(module, lesson_type)` returns the slot_sigs a group is
+  restricted to, or `None` when unrestricted — `None` and "every slot
+  listed" are behaviourally identical, `None` is just the representation for
+  a group the user never touched.
 - `offered_timeslots` and `selectable_groups` read `base_groups`, the full
-  offered set, rather than the lock-narrowed `groups`, so a row's options
-  survive locking. `to_config_yaml()` inverts `config.config_from_dict` for
-  the `s` save action.
+  offered set, rather than the lock/accept-narrowed `groups`, so a row's
+  options survive locking or restricting. `to_config_yaml()` inverts
+  `config.config_from_dict` for the `s` save action.
 
 ### `tui/app.py`
 
@@ -463,10 +479,18 @@ combination that never coexists.
 
 ### The rest
 
-- **`fixed` beats `locked`.** `locked` pins a `slot_sig`, so venue and week
-  twins survive and stay available to the ballot. `fixed` pins an exact
-  `class_no`. `prepare_groups` reads `fixed` first and short-circuits, so
-  `fixed` wins whenever both exist.
+- **`fixed` beats `locked` beats `accept`.** `locked` pins a `slot_sig`, so
+  venue and week twins survive and stay available to the ballot. `fixed`
+  pins an exact `class_no`. `accept` restricts to a set of `slot_sig`s.
+  `prepare_groups` reads them in that order and short-circuits on the first
+  match, so `fixed` wins over `locked`, which wins over `accept`.
+- **An empty `accept` list means ALL slots are acceptable, not none.** A
+  forgotten or cleared-out group must never silently submit nothing.
+  Enforced in two places: `search.py`'s `prepare_groups` treats the list by
+  truthiness (`if accepted:`), so `[]` falls through to "no restriction";
+  `tui/state.py`'s `toggle_accept` refuses up front (`if not keep: return
+  False`) rather than ever writing an empty list, since prepare_groups could
+  not tell that apart from "unrestricted" either.
 - **Raw scoring is weight-independent.** That is what lets
   `AppState.reweight()` reuse `_raw_cache` for weight sliders, while
   `retune()` rebuilds it for difficulty, time prefs, and locking.
@@ -503,6 +527,6 @@ When the API fails, `api.fetch_module` falls back to a stale cache and warns
 `"warning: API unreachable for {code}, using stale cache"`. With no cache at
 all, it raises `SystemExit`.
 
-The TUI intercepts one crash: locking a timeslot that would leave zero
-clash-free timetables. `AppState._apply_locked_change` rolls the mutation
-back and the app shows a toast.
+The TUI intercepts one crash: locking or accept-toggling a timeslot that
+would leave zero clash-free timetables. `AppState._apply_config_dict_change`
+rolls the mutation back and the app shows a toast.

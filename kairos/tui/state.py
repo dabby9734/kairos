@@ -171,7 +171,15 @@ class AppState:
     def _apply_config_dict_change(self, attr: str, mutate) -> bool:
         """Mutate config.<attr> (a module -> abbrev -> ... dict), rebuild the
         space, and commit only if the result is non-empty; otherwise roll
-        everything back and return False."""
+        everything back and return False.
+
+        The snapshot copies two levels ({m: dict(v) for m, v ...}), which is
+        only a real copy for `locked` (leaf is a str). For `accept` the leaf
+        is a list, so the snapshot aliases it with the live config -- safe
+        today only because every mutate() that touches `accept`
+        (toggle_accept) REBINDS `[abbrev] = numbers` to a fresh list rather
+        than mutating one in place. A future in-place `.append()`/`.sort()`
+        on an accept list would corrupt this rollback silently."""
         snapshot = (
             {m: dict(v) for m, v in getattr(self.config, attr).items()},
             self.groups, self.space, self.result, self.arrangements,

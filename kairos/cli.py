@@ -136,9 +136,13 @@ def cmd_run(args) -> None:
             raise SystemExit(
                 "error: no clash-free timetable — every "
                 f"{first.module} {first.lesson_type} clashes with every "
-                f"{second.module} {second.lesson_type}"
+                f"{second.module} {second.lesson_type} (or your `accept` "
+                "config narrowed one of them down to just these clashing slots)"
             )
-        raise SystemExit("error: no clash-free timetable found")
+        raise SystemExit(
+            "error: no clash-free timetable found "
+            "(check `fixed`/`locked`/`accept` for an over-narrow restriction)"
+        )
 
     structure = search.build_arrangement_structure(space)
     prov = arrangement_provenance(space, config, scored=scored, structure=structure)
@@ -192,9 +196,13 @@ def cmd_tui(args) -> None:
             raise SystemExit(
                 "error: no clash-free timetable — every "
                 f"{first.module} {first.lesson_type} clashes with every "
-                f"{second.module} {second.lesson_type}"
+                f"{second.module} {second.lesson_type} (or your `accept` "
+                "config narrowed one of them down to just these clashing slots)"
             )
-        raise SystemExit("error: no clash-free timetable found")
+        raise SystemExit(
+            "error: no clash-free timetable found "
+            "(check `fixed`/`locked`/`accept` for an over-narrow restriction)"
+        )
     run_app(state, Path(args.config))
 
 

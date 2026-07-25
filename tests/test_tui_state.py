@@ -520,11 +520,32 @@ def test_toggle_accept_is_reversible(state):
     assert len(state.space.combos) == before
 
 
-def test_toggle_accept_rejecting_everything_rolls_back(state):
+def test_toggle_accept_refuses_up_front_when_rejecting_the_last_slot(state):
+    """Exercises the `if not keep: return False` early return (state.py) --
+    it never mutates and never reaches _apply_accept_change, so it does NOT
+    cover the rollback path. See the rollback test below for that."""
     state.toggle_accept("ALPHA", "TUT", "Tutorial", "01")
     before = len(state.space.combos)
     snapshot = {m: dict(v) for m, v in state.config.accept.items()}
     # rejecting the last remaining slot would empty the space
     assert state.toggle_accept("ALPHA", "TUT", "Tutorial", "02") is False
-    assert state.config.accept == snapshot       # config restored
-    assert len(state.space.combos) == before     # space restored
+    assert state.config.accept == snapshot       # config unchanged
+    assert len(state.space.combos) == before     # space unchanged
+
+
+def test_toggle_accept_rolls_back_when_the_new_restriction_clashes(state):
+    """Real rollback coverage. `keep` is non-empty here, so mutate() runs and
+    _apply_accept_change/_prepare_space actually execute -- but the resulting
+    GLOBAL space is empty: ALPHA TUT pinned to its Monday 1400 slot clashes
+    with BETA LAB once BETA LAB is pinned to L1 (Monday 1400-1600). This is
+    the newly-refactored snapshot-restore path the guard test above cannot
+    reach."""
+    assert state.toggle_accept("ALPHA", "TUT", "Tutorial", "02") is True  # keep only 01 (Mon 1400)
+    assert state.config.accept["ALPHA"]["TUT"] == ["01"]
+    before_combos = len(state.space.combos)
+    snapshot = {m: dict(v) for m, v in state.config.accept.items()}
+    # Reject BETA LAB's L2, leaving only L1 -- which clashes with ALPHA TUT01
+    # on Monday, emptying the global space.
+    assert state.toggle_accept("BETA", "LAB", "Laboratory", "L2") is False
+    assert state.config.accept == snapshot          # BETA entry rolled back
+    assert len(state.space.combos) == before_combos  # space restored

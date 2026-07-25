@@ -258,6 +258,12 @@ class KairosApp(App):
     def _populate_timeslots(self) -> None:
         tlist = self.query_one("#timeslot-list", ListView)
         slot_list = self.query_one("#slot-list", ListView)
+        # Captured before self._current_class is reassigned below: a toggle
+        # (accept/lock) rebuilds via _refresh_results -> here with the SAME
+        # group still highlighted, and the cursor must survive that round trip
+        # so the user's next press lands where they're looking, not on row 0.
+        prev_class = self._current_class
+        prev_index = tlist.index
         self._timeslots = []
         self._current_class = None
         with self.prevent(ListView.Highlighted):
@@ -283,7 +289,10 @@ class KairosApp(App):
                     if slot["sig"] == locked:
                         locked_idx = i
                 if self._timeslots:
-                    tlist.index = locked_idx
+                    if prev_class == self._current_class and prev_index is not None:
+                        tlist.index = min(prev_index, len(self._timeslots) - 1)
+                    else:
+                        tlist.index = locked_idx
 
     def _refresh_detail(self) -> None:
         detail = self.query_one("#detail", Static)
@@ -455,6 +464,8 @@ class KairosApp(App):
         self._refresh_detail()
 
     def action_toggle_lock(self) -> None:
+        if self.ballot_mode:
+            return  # ballot view hides the timeslot pane; nothing to toggle
         tlist = self.query_one("#timeslot-list", ListView)
         if (self._current_class is None or tlist.index is None
                 or not (0 <= tlist.index < len(self._timeslots))):
@@ -472,12 +483,21 @@ class KairosApp(App):
         self._refresh_results()
 
     def action_toggle_accept(self) -> None:
+        if self.ballot_mode:
+            return  # ballot view hides the timeslot pane; nothing to toggle
         tlist = self.query_one("#timeslot-list", ListView)
         if (self._current_class is None or tlist.index is None
                 or not (0 <= tlist.index < len(self._timeslots))):
             return
         module, lesson_type = self._current_class
         abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
+        if self.state.is_locked(module, abbrev):
+            # prepare_groups reads `locked` first and never reaches `accept`
+            # for a locked group (search.py) -- writing one here would paint
+            # ✗ markers that move nothing, the same trap selectable_groups
+            # already avoids for `fixed` groups (state.py). Refuse instead.
+            self.notify(f"{module} {abbrev} is locked — unlock with l first")
+            return
         row = self._timeslots[tlist.index]
         if not self.state.toggle_accept(module, abbrev, lesson_type, row["rep"]):
             self.notify(f"rejecting {module} {abbrev} at that slot leaves no clash-free timetable")

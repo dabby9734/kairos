@@ -129,6 +129,15 @@ def test_prepare_groups_empty_accept_means_all(alpha_json, config):
     assert sorted(c.class_no for c in tut.choices) == ["01", "02", "03"]
 
 
+def test_prepare_groups_mixed_accept_raises_on_unknown_number(alpha_json, config):
+    # One valid number resolving must not mask the other one failing.
+    config.fixed = {}
+    config.accept = {"ALPHA": {"TUT": ["01", "99"]}}
+    gs = build_groups("ALPHA", semester_timetable(alpha_json, 1))
+    with pytest.raises(SystemExit, match="config 'accept'"):
+        prepare_groups(gs, config)
+
+
 def test_prepare_groups_locked_beats_accept(alpha_json, config):
     config.fixed = {}
     config.locked = {"ALPHA": {"TUT": "02"}}

@@ -693,3 +693,29 @@ async def test_accept_toggle_marks_timeslot_and_shrinks_space(state, tmp_path):
             for item in app.query_one("#timeslot-list", ListView).children
         ]
         assert any(line.startswith("✗") for line in labels)   # rejected slot marked
+
+
+async def test_accept_toggle_preserves_cursor_off_index_zero(state, tmp_path):
+    """Regression: _populate_timeslots used to snap the cursor to locked_idx
+    (0 with no lock) on every rebuild, so pressing `a` off the top row moved
+    the ✗ onto the row the user was on, then yanked the cursor back to row 0
+    -- the NEXT `a` press would silently reject the wrong slot instead of
+    undoing the first. Deliberately starts off index 0: every other accept
+    test in this file sits at index 0, which is exactly why this shipped."""
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.query_one("#slot-list", ListView).index = 0   # ALPHA TUT
+        await pilot.pause()
+        await pilot.press("right")            # focus the Timeslots pane
+        await pilot.pause()
+        tlist = app.query_one("#timeslot-list", ListView)
+        assert len(tlist.children) >= 2
+        tlist.index = 1                        # move OFF index 0
+        await pilot.pause()
+        await pilot.press("a")
+        await pilot.pause()
+        assert tlist.index == 1                # cursor stayed on the row we toggled
+        labels = [str(item.query_one("Label").content) for item in tlist.children]
+        assert labels[1].startswith("✗")       # ✗ landed where the cursor was
+        assert not labels[0].startswith("✗")   # not on the untouched row
