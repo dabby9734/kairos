@@ -25,7 +25,7 @@ def module_colours(modules) -> dict:
     return {module: PALETTE[i % len(PALETTE)] for i, module in enumerate(modules)}
 
 
-def render_week_rich(assignment: dict, colours: dict, preview=None) -> Group:
+def render_week_rich(assignment: dict, colours: dict, preview=None, agenda=True) -> Group:
     """A Rich renderable of the week grid. Each class is a coloured strip spanning
     its hours, labelled `MODULE [TYPE]` (or just `MODULE` when the strip is too
     narrow), with an agenda of times/venues below each day. Classes whose times
@@ -37,7 +37,11 @@ def render_week_rich(assignment: dict, colours: dict, preview=None) -> Group:
     timeslot the user is currently highlighting. If that class is already on this
     exact slot, its existing strip is inverted in place and nothing is added.
     Otherwise the candidate is drawn as an extra inverted strip plus a
-    `(preview)` agenda line, alongside the class's current slot."""
+    `(preview)` agenda line, alongside the class's current slot.
+
+    `agenda=False` drops the per-day times/venues lines, leaving strips only.
+    The TUI's ballot view pins the grid above a scrolling list, where the full
+    agenda would consume the whole pane."""
     hours = list(GRID_HOURS)
     first_hour = hours[0]
     last_hour = hours[-1]
@@ -139,15 +143,16 @@ def render_week_rich(assignment: dict, colours: dict, preview=None) -> Group:
                 cursor = span_end
             rows.append(row)
 
-        # Agenda: every block for the day, sorted by start time.
-        for start, end, _sh, _eh, module, abbrev, class_no, venue, online, mode in sorted(blocks):
-            if mode == "preview":
-                rows.append(Text(f"       {fmt_time(start)}-{fmt_time(end)} {module} {abbrev} (preview)"))
-                continue
-            note = " (online)" if online else ""
-            rows.append(Text(
-                f"       {fmt_time(start)}-{fmt_time(end)} {module} "
-                f"{abbrev}[{class_no}] @{venue}{note}",
-            ))
+        if agenda:
+            # Agenda: every block for the day, sorted by start time.
+            for start, end, _sh, _eh, module, abbrev, class_no, venue, online, mode in sorted(blocks):
+                if mode == "preview":
+                    rows.append(Text(f"       {fmt_time(start)}-{fmt_time(end)} {module} {abbrev} (preview)"))
+                    continue
+                note = " (online)" if online else ""
+                rows.append(Text(
+                    f"       {fmt_time(start)}-{fmt_time(end)} {module} "
+                    f"{abbrev}[{class_no}] @{venue}{note}",
+                ))
 
     return Group(*rows)

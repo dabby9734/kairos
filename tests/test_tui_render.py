@@ -227,3 +227,31 @@ def test_flashed_slot_inverts_strip_only():
     assert "30;42" in strip
     assert "\x1b[" not in agenda  # agenda line carries no styling at all
     assert "\x1b[5m" not in ansi and ";5m" not in ansi and "\x1b[5;" not in ansi  # no blink
+
+
+def test_agenda_false_drops_agenda_keeps_strips():
+    assignment = {("CS2030S", "Laboratory"): _choice("CS2030S", "Laboratory", "14B", "Monday", 840, 960)}
+    colours = module_colours(["CS2030S"])
+    compact = _plain(render_week_rich(assignment, colours, agenda=False))
+    assert "CS2030S [LAB]" in compact   # the strip survives
+    assert "@COM1" not in compact       # the agenda line is gone
+    assert "14:00-16:00" not in compact
+    # header + Mon-Fri, one lane each, and no Saturday in this assignment
+    assert len([ln for ln in compact.splitlines() if ln.strip()]) == 6
+
+
+def test_agenda_true_matches_default():
+    assignment = {("CS2030S", "Laboratory"): _choice("CS2030S", "Laboratory", "14B", "Monday", 840, 960)}
+    colours = module_colours(["CS2030S"])
+    assert _plain(render_week_rich(assignment, colours, agenda=True)) == _plain(
+        render_week_rich(assignment, colours)
+    )
+
+
+def test_agenda_false_still_draws_preview_strip():
+    assignment = {("CS2030S", "Tutorial"): _choice("CS2030S", "Tutorial", "01", "Monday", 600, 660)}
+    colours = module_colours(["CS2030S"])
+    sig = frozenset({("Wednesday", 840, 900, False)})
+    compact = _plain(render_week_rich(assignment, colours, preview=("CS2030S", "Tutorial", sig), agenda=False))
+    assert compact.count("CS2030S") == 2  # the real strip plus the preview strip
+    assert "(preview)" not in compact     # that line lives in the agenda
