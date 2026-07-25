@@ -76,16 +76,16 @@ def _advise_setup(url: str, config_path: Path):
     # for the timetable subcommands.
     from .coursereg.model import profile_from_dict, profile_to_yaml
 
-    if config_path.exists():
-        answer = input(f"{config_path} already exists — overwrite? [y/N] ").strip().lower()
-        if answer != "y":
-            raise SystemExit("aborted")
     semester, selections = parse_share_url(url)
     if semester not in (1, 2):
         raise SystemExit(
             "error: kairos advise models semesters 1 and 2 only — "
             "this link is for a special term"
         )
+    if config_path.exists():
+        answer = input(f"{config_path} already exists — overwrite? [y/N] ").strip().lower()
+        if answer != "y":
+            raise SystemExit("aborted")
     seniority = int(_prompt_choice("year of study (1-4) [2]: ", {c: c for c in "1234"}, "2"))
     rnd = int(_prompt_choice("round (2/3) [2]: ", {"2": "2", "3": "3"}, "2"))
     tier_choices = {

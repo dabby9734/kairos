@@ -101,10 +101,14 @@ def test_advise_setup_declined_overwrite_aborts(tmp_path, monkeypatch):
 def test_advise_setup_rejects_special_term_before_prompting(tmp_path, monkeypatch):
     from kairos.cli import _advise_setup
 
+    config_path = tmp_path / "coursereg.yaml"
+    config_path.write_text("existing: true")
+
     def no_prompts(prompt=""):
         raise AssertionError("prompted despite special-term link")
 
     monkeypatch.setattr("builtins.input", no_prompts)
     url = "https://nusmods.com/timetable/sem-3/share?CS2109S=TUT:01"
     with pytest.raises(SystemExit, match="special term"):
-        _advise_setup(url, tmp_path / "coursereg.yaml")
+        _advise_setup(url, config_path)
+    assert config_path.read_text() == "existing: true"
