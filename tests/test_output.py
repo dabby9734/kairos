@@ -1,6 +1,6 @@
 from kairos.ballot import BallotOption
 from kairos.model import Choice, Session
-from kairos.output import class_warnings, render_breakdown, render_options, render_snake, render_week, share_url
+from kairos.output import class_warnings, render_breakdown, render_options, render_snake, render_week, share_url, snake_legend, snake_rows
 
 ALL_WEEKS = frozenset(range(1, 14))
 
@@ -498,3 +498,74 @@ def test_render_snake_rich_matches_plain_text():
     )
     prov = Prov()
     assert render_snake_rich([entry], prov).plain == render_snake([entry], provenance=prov)
+
+
+def _prov_stub(total=10):
+    from kairos.provenance import ClusterStats
+
+    class Prov:
+        def __init__(self):
+            self.total = total
+
+        def cluster_stats(self, keys):
+            return ClusterStats(-14.0, -14.0, 5, 1, 1)
+
+    return Prov()
+
+
+def _snake_entry(module="ALPHA", lesson_type="Tutorial", class_no="01", tied_with=None):
+    from kairos.ballot import BallotOption
+    from kairos.model import Session
+
+    weeks = frozenset(range(1, 14))
+    return BallotOption(
+        module, lesson_type, class_no, "A", 3.0,
+        (Session("Monday", 600, 660, weeks, "COM1"),), list(tied_with or []),
+    )
+
+
+def test_snake_rows_one_row_per_entry_in_ballot_order():
+    entries = [_snake_entry(class_no="01"), _snake_entry(class_no="02")]
+    rows = snake_rows(entries, _prov_stub())
+    assert [entry for entry, _line, _cont in rows] == entries
+    assert " 1. ALPHA TUT[01]" in rows[0][1]
+    assert " 2. ALPHA TUT[02]" in rows[1][1]
+
+
+def test_snake_rows_continuation_only_when_tied():
+    plain, tied = _snake_entry(class_no="01"), _snake_entry(class_no="02", tied_with=["03"])
+    rows = snake_rows([plain, tied], _prov_stub())
+    assert rows[0][2] is None
+    assert "↳ interchangeable with 03" in rows[1][2]
+
+
+def test_snake_rows_empty_entries():
+    assert snake_rows([], _prov_stub()) == []
+
+
+def test_snake_rows_columns_align_across_mixed_widths():
+    short = _snake_entry(module="AA", class_no="1")
+    wide = _snake_entry(module="LONGMODULE", lesson_type="Laboratory", class_no="B99")
+    rows = snake_rows([short, wide], _prov_stub())
+    starts = [line.index("choice ") for _entry, line, _cont in rows]
+    assert len(set(starts)) == 1  # the choice column starts at the same offset
+
+
+def test_snake_legend_reports_provenance_total():
+    lines = snake_legend(_prov_stub(total=42))
+    assert len(lines) == 2
+    assert lines[0].startswith("best    =")
+    assert "42 clash-free timetables" in lines[1]
+
+
+def test_render_snake_is_legend_plus_snake_rows():
+    # The byte-identity guarantee: ballot.txt and `kairos run` output must not
+    # move when the TUI starts consuming rows directly.
+    entries = [_snake_entry(class_no="01"), _snake_entry(class_no="02", tied_with=["03"])]
+    prov = _prov_stub()
+    lines = [*snake_legend(prov), ""]
+    for _entry, line, cont in snake_rows(entries, prov):
+        lines.append(line)
+        if cont is not None:
+            lines.append(cont)
+    assert "\n".join(lines) == render_snake(entries, provenance=prov)

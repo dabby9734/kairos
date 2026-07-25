@@ -195,6 +195,62 @@ def render_options(options_by_group: dict) -> str:
     return "\n".join(lines)
 
 
+def snake_legend(provenance) -> list:
+    """The two explanatory lines printed above the ballot table."""
+    return [
+        "best    = ceiling: the best timetable containing this class",
+        f"typical = median of the {provenance.total} clash-free timetables containing it",
+    ]
+
+
+def snake_rows(entries: list, provenance) -> list:
+    """One `(entry, line, continuation)` triple per ballot entry, in ballot
+    order, with columns aligned across the whole ballot. `continuation` is the
+    interchangeable-twins line, or None when the entry has no twins.
+
+    Split out of render_snake so a caller needing per-entry rows -- the TUI's
+    ballot ListView, which needs one widget per entry -- gets them directly
+    rather than rendering text and parsing entry boundaries back out of it."""
+    if not entries:
+        return []
+    cells = []
+    for position, option in enumerate(entries, 1):
+        abbrev = LESSON_ABBREV.get(option.lesson_type, option.lesson_type)
+        stats = provenance.cluster_stats(
+            {
+                (option.module, option.lesson_type, class_no)
+                for class_no in [option.class_no, *option.tied_with]
+            }
+        )
+        best = "" if stats is None else f"best #{stats.ceiling_tier} ({stats.ceiling:+.1f})"
+        typical = (
+            "" if stats is None else f"typical #{stats.median_tier} ({stats.median:+.1f})"
+        )
+        cells.append((
+            option,
+            f"{position:2}. {option.module} {abbrev}[{option.class_no}]",
+            f"choice {option.letter}",
+            _when(option.sessions),
+            best,
+            typical,
+        ))
+
+    widths = [max(len(cell[i]) for cell in cells) for i in range(1, 6)]
+    rows = []
+    for option, label, choice, when, best, typical in cells:
+        line = (
+            f"{label:<{widths[0]}}  {choice:<{widths[1]}}  {when:<{widths[2]}}  "
+            f"{best:<{widths[3]}}  {typical}"
+        ).rstrip()
+        continuation = (
+            f"{'':<{widths[0]}}    ↳ interchangeable with {', '.join(option.tied_with)}"
+            if option.tied_with
+            else None
+        )
+        rows.append((option, line, continuation))
+    return rows
+
+
 def render_snake(entries: list, provenance=None) -> str:
     """The ballot, in submission order.
 
@@ -222,45 +278,11 @@ def render_snake(entries: list, provenance=None) -> str:
             )
         return "\n".join(lines)
 
-    rows = []
-    for position, option in enumerate(entries, 1):
-        abbrev = LESSON_ABBREV.get(option.lesson_type, option.lesson_type)
-        stats = provenance.cluster_stats(
-            {
-                (option.module, option.lesson_type, class_no)
-                for class_no in [option.class_no, *option.tied_with]
-            }
-        )
-        best = "" if stats is None else f"best #{stats.ceiling_tier} ({stats.ceiling:+.1f})"
-        typical = (
-            "" if stats is None else f"typical #{stats.median_tier} ({stats.median:+.1f})"
-        )
-        rows.append(
-            (
-                f"{position:2}. {option.module} {abbrev}[{option.class_no}]",
-                f"choice {option.letter}",
-                _when(option.sessions),
-                best,
-                typical,
-                option.tied_with,
-            )
-        )
-
-    widths = [max(len(row[i]) for row in rows) for i in range(5)]
-    lines = [
-        "best    = ceiling: the best timetable containing this class",
-        f"typical = median of the {provenance.total} clash-free timetables containing it",
-        "",
-    ]
-    for row in rows:
-        lines.append(
-            f"{row[0]:<{widths[0]}}  {row[1]:<{widths[1]}}  {row[2]:<{widths[2]}}  "
-            f"{row[3]:<{widths[3]}}  {row[4]}".rstrip()
-        )
-        if row[5]:
-            lines.append(
-                f"{'':<{widths[0]}}    ↳ interchangeable with {', '.join(row[5])}"
-            )
+    lines = [*snake_legend(provenance), ""]
+    for _option, line, continuation in snake_rows(entries, provenance):
+        lines.append(line)
+        if continuation is not None:
+            lines.append(continuation)
     return "\n".join(lines)
 
 
