@@ -16,7 +16,7 @@ also run `kairos ...` directly instead of `python -m kairos`.
 ## Running the tests
 
 ```bash
-.venv/bin/pytest -q                                  # full suite: 309 passed in ~10s
+.venv/bin/pytest -q                                  # full suite: 260 passed in ~8s
 .venv/bin/pytest tests/test_ballot.py -k snake -v     # narrowing example: 2 selected
 ```
 
@@ -34,12 +34,6 @@ so async tests (the TUI ones) need no `@pytest.mark.asyncio` marker — any
 | `test_cli_run.py` | `kairos/cli.py` (`run` subcommand) | End-to-end `run` against a written config, flag placement after the subcommand, an init→run roundtrip, irreconcilable-module reporting, and that CLI-printed timetables match arrangement ranking. |
 | `test_cli_tui.py` | `kairos/cli.py` (`tui` subcommand) | That `tui` builds `AppState` and hands off to `run_app`, exits cleanly with no source, and reports irreconcilable modules before launching. |
 | `test_config.py` | `kairos/config.py` | `load_config` defaults and difficulty derivation, overrides, bad-difficulty/missing-file/empty-file/missing-key errors, `Config`-from-dict parity, and parsing/defaulting the `locked` key. |
-| `test_coursereg_advisor.py` | `kairos/coursereg/advisor.py` | `ratio` edge cases (unlimited vacancy, zero vacancy, missing inputs), the SAFE/CONTESTED/LONG_SHOT/NO_DATA base bands and their recent-years-only window, `same_sem_ratios` filtering, the `nudge_steps` table (core/major/ue × seniority), full `verdict` banding and reasoning text, `suggested_order` leverage ordering with a tiebreak, `leverage_warnings` (wasted-top-rank, unranked-contested, no-data), and `dossier_rows` same/other-semester splitting. |
-| `test_coursereg_cli.py` | `kairos/cli.py` (`advise` subcommand) | That a missing `coursereg.yaml` exits with the pasted `TEMPLATE`; that `advise` defaults `--config`/`--cache-dir` to `coursereg.yaml`/`data/coursereg` rather than the timetable subcommands' `config.yaml`/`data/cache`; and the `advise <share-url>` setup flow — prompt defaults/shorthands/reprompts, link-order candidates, overwrite confirmation, special-term rejection before any prompt, and that the TUI then launches with the fresh profile. |
-| `test_coursereg_fetch.py` | `kairos/coursereg/fetch.py` | `parse_history_html` against the golden fixture (per-course-round cell merging, the unlimited-vacancy sentinel, N/A cells skipped not zeroed, year/semester tagging, an unrecognisable-page error, and tolerance of an orphan `<td>` outside any row), plus `load_history`'s cache orchestration (fetch-all-semesters-and-cache, pure-cache second call, `--refetch` forcing a re-fetch, no-cache-no-network error, and a corrupt-cache error hinting `--refetch`). |
-| `test_coursereg_model.py` | `kairos/coursereg/model.py` | `profile_from_dict` field parsing, course-code upper-casing, out-of-range seniority/semester/round rejection, bad-tier/empty-candidates rejection, `load_profile`'s missing-file error pasting `TEMPLATE`, a `coursereg.yaml` round-trip preserving order and `ranked`, and that `TEMPLATE` itself parses as a valid profile. |
-| `test_coursereg_tui_app.py` | `kairos/coursereg/tui/app.py` | `AdvisorApp` end-to-end via Textual's `run_test()` pilot: opening in suggested order with a populated dossier, `J` reordering, `t` cycling tier and recomputing its verdict, `r` toggling round, `a` restoring suggested order, `s` saving the ranking to YAML, and the warnings strip flagging a SAFE course in a top rank. |
-| `test_coursereg_tui_state.py` | `kairos/coursereg/tui/state.py` | `AdvisorState` — opening in suggested vs. saved (`ranked`) order, `rows()` rank/standing/tier output, `move` reordering with end-clamping, `cycle_tier` and `toggle_round` recomputing verdicts, `restore_suggested`, top-rank SAFE warnings, and `to_yaml` round-tripping with the `ranked` flag set. |
 | `test_model.py` | `kairos/model.py` | Time parsing/formatting, `slot_sig` ignoring class_no/venue/weeks, lesson-type abbreviation roundtrip, online detection, clash detection (same-day overlap, different day, back-to-back, disjoint weeks), `Choice` clash/footprint, and week labels. |
 | `test_output.py` | `kairos/output.py` | Share-URL rendering, week-grid rendering (Saturday shown/omitted, unmapped lesson types), breakdown legend rendering, the full `class_warnings` rule set (time window, tough days, same-day pairing, lunch, weight-zero suppression, impossible-pairing suppression), and both plain-text and rich (reverse-video) snake rendering. |
 | `test_provenance.py` | `kairos/provenance.py` | `arrangement_provenance` — total/score-descending invariants, dedup of distinct scores, tier lookup for observed vs. interpolated scores, per-class cluster stats, ceiling-never-worse-than-median, agreement between by-arrangement and by-class views, and index alignment with `rank_arrangements` (including under ties). |
@@ -51,22 +45,8 @@ so async tests (the TUI ones) need no `@pytest.mark.asyncio` marker — any
 | `test_tui_state.py` | `kairos/tui/state.py` | `AppState`/`normalize_difficulties` — enumeration/ranking on construction, weight/difficulty/preference changes and reranking, priority reordering without a full rescore, ballot helpers, lock/unlock of timeslots, config-YAML roundtrip, the raw-cache and arrangement-structure reuse/rebuild rules, provenance exposure, and `selectable_groups` filtering (including the "collapses to one slot_sig" exclusion). |
 | `test_tui_widgets.py` | `kairos/tui/widgets.py` | `clamp` and `Slider` — value clamping/stepping and that the rendered label contains both name and value. |
 
-(22 test files, one per row above. The 6 `test_coursereg_*.py` files are the
-CourseReg advisor's suite, added alongside `kairos/coursereg/`. `ls tests/`
-also shows three non-test entries: the `__init__.py` and `conftest.py`
-support files and the `data/` fixture directory.)
-
-The coursereg fetch tests (`test_coursereg_fetch.py`) run against a golden
-fixture, `tests/data/courserekt_sample.html` — a hand-trimmed courserekt.
-vercel.app response covering the merge/N/A/unlimited-vacancy cases
-`parse_history_html` has to handle. No test in the suite touches the real
-network: `test_coursereg_fetch.py`'s `load_history` tests
-`monkeypatch.setattr(fetch, "fetch_semester", ...)` to serve the fixture
-locally; `test_coursereg_advisor.py`/`test_coursereg_tui_*.py` build
-`Profile`/`DemandRecord` fixtures directly in-process instead of fetching
-anything; and `test_coursereg_cli.py` either hits `load_profile`'s
-missing-file error before any fetch would happen, or replaces
-`cli.cmd_advise` wholesale so `load_history` is never called at all.
+(16 test files, one per row above. `ls tests/` also shows two non-test
+entries: the `__init__.py` and `conftest.py` support files.)
 
 `tests/conftest.py` defines shared fixtures. Four synthetic NUSMods-shaped
 module JSON fixtures each pin one tricky shape, per their own docstrings:

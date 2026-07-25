@@ -59,52 +59,6 @@ def _prompt_difficulty(code: str, abbrev: str) -> int:
         print("please enter a number from 1 to 5")
 
 
-def _prompt_choice(prompt: str, valid: dict, default: str) -> str:
-    # `valid` maps accepted (lowercase) input to its canonical value, so
-    # shorthands like "c" -> "core" ride along for free.
-    while True:
-        answer = input(prompt).strip().lower()
-        if not answer:
-            return default
-        if answer in valid:
-            return valid[answer]
-        print(f"please enter one of: {', '.join(sorted(set(valid.values())))}")
-
-
-def _advise_setup(url: str, config_path: Path):
-    # Lazy import, matching cmd_advise: the coursereg stack stays unloaded
-    # for the timetable subcommands.
-    from .coursereg.model import profile_from_dict, profile_to_yaml
-
-    semester, selections = parse_share_url(url)
-    if semester not in (1, 2):
-        raise SystemExit(
-            "error: kairos advise models semesters 1 and 2 only — "
-            "this link is for a special term"
-        )
-    if config_path.exists():
-        answer = input(f"{config_path} already exists — overwrite? [y/N] ").strip().lower()
-        if answer != "y":
-            raise SystemExit("aborted")
-    seniority = int(_prompt_choice("year of study (1-4) [2]: ", {c: c for c in "1234"}, "2"))
-    rnd = int(_prompt_choice("round (2/3) [2]: ", {"2": "2", "3": "3"}, "2"))
-    tier_choices = {
-        "core": "core", "major": "major", "ue": "ue",
-        "c": "core", "m": "major", "u": "ue",
-    }
-    candidates = {
-        code: _prompt_choice(f"tier for {code} (core/major/ue) [major]: ", tier_choices, "major")
-        for code in selections  # link order — becomes the initial rank order
-    }
-    profile = profile_from_dict(
-        {"seniority": seniority, "semester": semester, "round": rnd, "candidates": candidates},
-        source=str(config_path),
-    )
-    config_path.write_text(profile_to_yaml(profile))
-    print(f"wrote {config_path}")
-    return profile
-
-
 def cmd_init(args) -> None:
     config_path = Path(args.config)
     if config_path.exists():
@@ -243,21 +197,6 @@ def cmd_tui(args) -> None:
     run_app(state, Path(args.config))
 
 
-def cmd_advise(args) -> None:
-    from .coursereg.fetch import load_history
-    from .coursereg.model import load_profile
-    from .coursereg.tui.app import run_advisor
-    from .coursereg.tui.state import AdvisorState
-
-    config_path = Path(args.config)
-    if args.share_url:
-        profile = _advise_setup(args.share_url, config_path)
-    else:
-        profile = load_profile(config_path)
-    records = load_history(Path(args.cache_dir), refetch=args.refetch)
-    run_advisor(AdvisorState(profile, records), config_path)
-
-
 def _add_common_flags(subparser, dest_prefix: str) -> None:
     # NOTE: argparse's SubParsersAction parses the subcommand with a *fresh*
     # namespace and unconditionally copies every attribute back onto the
@@ -296,30 +235,6 @@ def main(argv: list | None = None) -> None:
     tui_parser.add_argument("--acad-year", help="e.g. 2026-2027 (default: guessed from date)")
     _add_common_flags(tui_parser, "tui")
 
-    advise_parser = subparsers.add_parser(
-        "advise", help="CourseReg R2/R3 ranking advisor (what-if TUI)"
-    )
-    advise_parser.add_argument(
-        "share_url", nargs="?",
-        help="NUSMods share URL — asks setup questions and writes coursereg.yaml first",
-    )
-    # advise has its OWN config/cache defaults (coursereg.yaml, data/coursereg)
-    # rather than _add_common_flags: the generic merge in main() would fall
-    # back to the timetable's config.yaml/data/cache for absent values, and
-    # these non-None defaults keep the merge from ever falling through.
-    advise_parser.add_argument(
-        "--config", dest="advise_config", default="coursereg.yaml",
-        help="path to coursereg.yaml",
-    )
-    advise_parser.add_argument(
-        "--cache-dir", dest="advise_cache_dir", default="data/coursereg",
-        help="demand-history cache directory",
-    )
-    advise_parser.add_argument(
-        "--refetch", action="store_true",
-        help="re-scrape courserekt even if cached (repair hatch)",
-    )
-
     args = parser.parse_args(argv)
     args.config = getattr(args, f"{args.command}_config", None) or args.config
     args.cache_dir = getattr(args, f"{args.command}_cache_dir", None) or args.cache_dir
@@ -327,7 +242,5 @@ def main(argv: list | None = None) -> None:
         cmd_init(args)
     elif args.command == "run":
         cmd_run(args)
-    elif args.command == "advise":
-        cmd_advise(args)
     else:
         cmd_tui(args)

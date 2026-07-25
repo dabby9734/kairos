@@ -2,4 +2,3 @@
 __pycache__/
 *.egg-info/
 data/cache/
-data/coursereg/
