@@ -499,3 +499,32 @@ def test_selectable_groups_counts_slots_from_base_groups(state):
     rows = {(r.module, r.abbrev): r for r in state.selectable_groups(arr.assignment)}
     assert ("BETA", "LAB") in rows
     assert rows[("BETA", "LAB")].locked is True
+
+
+def test_first_toggle_accept_removes_only_that_slot(state):
+    # Unrestricted means all-acceptable, so the first press REJECTS one slot
+    # rather than restricting to it.
+    assert state.accepted_sigs("ALPHA", "Tutorial") is None
+    assert state.toggle_accept("ALPHA", "TUT", "Tutorial", "01") is True
+    accepted = state.accepted_sigs("ALPHA", "Tutorial")
+    assert accepted is not None
+    assert state.config.accept["ALPHA"]["TUT"] == ["02"]  # 01 gone, Tue slot kept
+
+
+def test_toggle_accept_is_reversible(state):
+    before = len(state.space.combos)
+    state.toggle_accept("ALPHA", "TUT", "Tutorial", "01")
+    assert len(state.space.combos) < before
+    state.toggle_accept("ALPHA", "TUT", "Tutorial", "01")   # put it back
+    assert state.accepted_sigs("ALPHA", "Tutorial") is None
+    assert len(state.space.combos) == before
+
+
+def test_toggle_accept_rejecting_everything_rolls_back(state):
+    state.toggle_accept("ALPHA", "TUT", "Tutorial", "01")
+    before = len(state.space.combos)
+    snapshot = {m: dict(v) for m, v in state.config.accept.items()}
+    # rejecting the last remaining slot would empty the space
+    assert state.toggle_accept("ALPHA", "TUT", "Tutorial", "02") is False
+    assert state.config.accept == snapshot       # config restored
+    assert len(state.space.combos) == before     # space restored

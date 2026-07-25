@@ -674,3 +674,22 @@ async def test_week_grid_gets_more_height_than_the_top_row(state, tmp_path):
         detail = app.query_one("#detail-scroll")
         # timetables + warnings shrank; the week grid absorbs the remainder
         assert detail.size.height >= 3 * top_row.size.height
+
+
+async def test_accept_toggle_marks_timeslot_and_shrinks_space(state, tmp_path):
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.query_one("#slot-list", ListView).index = 0
+        await pilot.pause()
+        await pilot.press("right")            # focus the Timeslots pane
+        await pilot.pause()
+        before = len(app.state.space.combos)
+        await pilot.press("a")
+        await pilot.pause()
+        assert len(app.state.space.combos) < before
+        labels = [
+            str(item.query_one("Label").content)
+            for item in app.query_one("#timeslot-list", ListView).children
+        ]
+        assert any(line.startswith("✗") for line in labels)   # rejected slot marked

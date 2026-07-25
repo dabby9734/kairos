@@ -130,6 +130,7 @@ class KairosApp(App):
         ("c", "copy_link", "copy link"),
         ("b", "toggle_ballot", "ballot view"),
         ("l", "toggle_lock", "lock slot"),
+        ("a", "toggle_accept", "accept slot"),
         ("right", "focus_timeslots", "timeslots"),
         ("left", "focus_classes", "classes"),
         ("escape", "focus_classes", "back"),
@@ -268,9 +269,15 @@ class KairosApp(App):
                 tlist.border_title = f"Timeslots: {row.module} {row.abbrev}"
                 self._timeslots = self.state.offered_timeslots(row.module, row.lesson_type)
                 locked = self.state.locked_sig(row.module, row.lesson_type)
+                accepted = self.state.accepted_sigs(row.module, row.lesson_type)
                 locked_idx = 0
                 for i, slot in enumerate(self._timeslots):
-                    mark = "🔒 " if slot["sig"] == locked else ""
+                    if slot["sig"] == locked:
+                        mark = "🔒 "
+                    elif accepted is not None and slot["sig"] not in accepted:
+                        mark = "✗ "
+                    else:
+                        mark = ""
                     label = f"{mark}{_fmt_timeslot(slot)} ({'/'.join(slot['class_nos'])})"
                     tlist.append(ListItem(Label(label)))
                     if slot["sig"] == locked:
@@ -464,6 +471,19 @@ class KairosApp(App):
             return
         self._refresh_results()
 
+    def action_toggle_accept(self) -> None:
+        tlist = self.query_one("#timeslot-list", ListView)
+        if (self._current_class is None or tlist.index is None
+                or not (0 <= tlist.index < len(self._timeslots))):
+            return
+        module, lesson_type = self._current_class
+        abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
+        row = self._timeslots[tlist.index]
+        if not self.state.toggle_accept(module, abbrev, lesson_type, row["rep"]):
+            self.notify(f"rejecting {module} {abbrev} at that slot leaves no clash-free timetable")
+            return
+        self._refresh_results()
+
     def action_save_config(self) -> None:
         self.config_path.write_text(yaml.safe_dump(self.state.to_config_yaml(), sort_keys=False))
         self.notify(f"saved {self.config_path}")
@@ -476,7 +496,7 @@ class KairosApp(App):
         if missing:
             self.notify(
                 f"wrote {out} — only {len(entries)} of {ballot.BALLOT_CAP} ballot slots "
-                "used (no further clash-free options)",
+                "used (no further clash-free options, or narrowed by your accepted slots)",
                 severity="warning",
             )
         else:

@@ -168,11 +168,12 @@ class AppState:
     def is_locked(self, module: str, abbrev: str) -> bool:
         return abbrev in (self.config.locked.get(module) or {})
 
-    def _apply_locked_change(self, mutate) -> bool:
-        """Mutate config.locked, rebuild the space, and commit only if the
-        result is non-empty; otherwise roll everything back and return False."""
+    def _apply_config_dict_change(self, attr: str, mutate) -> bool:
+        """Mutate config.<attr> (a module -> abbrev -> ... dict), rebuild the
+        space, and commit only if the result is non-empty; otherwise roll
+        everything back and return False."""
         snapshot = (
-            {m: dict(v) for m, v in self.config.locked.items()},
+            {m: dict(v) for m, v in getattr(self.config, attr).items()},
             self.groups, self.space, self.result, self.arrangements,
             self.provenance,
             self._raw_cache, self._arr_structure, self._unpairable,
@@ -180,10 +181,11 @@ class AppState:
         mutate()
         prepared, space = self._prepare_space()
         if not space.combos:
-            (self.config.locked, self.groups, self.space,
+            (config_dict, self.groups, self.space,
              self.result, self.arrangements,
              self.provenance,
              self._raw_cache, self._arr_structure, self._unpairable) = snapshot
+            setattr(self.config, attr, config_dict)
             return False
         self.groups = prepared
         self.space = space
@@ -191,6 +193,12 @@ class AppState:
         self._refresh_unpairable()
         self.retune()
         return True
+
+    def _apply_locked_change(self, mutate) -> bool:
+        return self._apply_config_dict_change("locked", mutate)
+
+    def _apply_accept_change(self, mutate) -> bool:
+        return self._apply_config_dict_change("accept", mutate)
 
     def set_lock(self, module: str, abbrev: str, class_no: str) -> bool:
         def mutate():
@@ -205,6 +213,69 @@ class AppState:
                 if not slots:
                     self.config.locked.pop(module, None)
         return self._apply_locked_change(mutate)
+
+    def accepted_sigs(self, module: str, lesson_type: str):
+        """The slot_sigs this group is restricted to, or None when unrestricted.
+
+        None and "every slot listed" are behaviourally identical; None is the
+        unrestricted representation, so a group the user never touched carries
+        no config entry."""
+        abbrev = LESSON_ABBREV.get(lesson_type, lesson_type)
+        numbers = (self.config.accept.get(module) or {}).get(abbrev)
+        if not numbers:
+            return None
+        wanted = {str(n) for n in numbers}
+        return frozenset(
+            row["sig"]
+            for row in self.offered_timeslots(module, lesson_type)
+            if wanted & set(row["class_nos"])
+        )
+
+    def toggle_accept(self, module: str, abbrev: str, lesson_type: str, class_no: str) -> bool:
+        """Flip one timeslot's membership of the accepted set, rebuilding the
+        space and rolling back if nothing clash-free survives.
+
+        An unrestricted group is materialised as every slot MINUS this one: the
+        first press rejects, because "unrestricted" already means everything is
+        acceptable and restricting to the highlighted slot would silently
+        duplicate `l`."""
+        rows = self.offered_timeslots(module, lesson_type)
+        target = next((r for r in rows if class_no in r["class_nos"]), None)
+        if target is None:
+            return False
+        current = (self.config.accept.get(module) or {}).get(abbrev)
+        if current:
+            wanted = {str(n) for n in current}
+            keep = [r for r in rows if wanted & set(r["class_nos"])]
+        else:
+            keep = list(rows)
+        if any(r["sig"] == target["sig"] for r in keep):
+            keep = [r for r in keep if r["sig"] != target["sig"]]
+        else:
+            keep.append(target)
+        if not keep:
+            # An empty `accept` list is indistinguishable from "no restriction"
+            # to prepare_groups (search.py checks truthiness), so writing one
+            # here would silently widen the group back to everything instead of
+            # narrowing it to nothing. Rejecting the last remaining slot always
+            # leaves no clash-free timetable for this group, so refuse up front
+            # rather than mutate into a state we can't actually represent.
+            return False
+        # One representative class_no per kept slot; sorted for a deterministic
+        # config file (M4: every ordering needs an explicit tiebreak).
+        numbers = sorted(min(r["class_nos"]) for r in keep)
+
+        def mutate():
+            if numbers and len(numbers) < len(rows):
+                self.config.accept.setdefault(module, {})[abbrev] = numbers
+            else:
+                slots = self.config.accept.get(module)
+                if slots is not None:
+                    slots.pop(abbrev, None)
+                    if not slots:
+                        self.config.accept.pop(module, None)
+
+        return self._apply_accept_change(mutate)
 
     def _base_group(self, module, lesson_type):
         return next(

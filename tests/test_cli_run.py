@@ -49,8 +49,8 @@ def test_run_end_to_end(tmp_path, config_file, monkeypatch, capsys, alpha_json, 
     # falls short of the 20-slot cap and the CLI must warn about it
     assert (
         "warning: ballot uses only 5 of 20 slots — no further clash-free "
-        "options exist. NUS notes a shorter list may mean not getting a "
-        "tutorial allocated at all."
+        "options exist (or your `accept` lists exclude them). NUS notes a "
+        "shorter list may mean not getting a tutorial allocated at all."
     ) in out
 
 
