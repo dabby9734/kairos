@@ -74,7 +74,9 @@ flowchart LR
 The `advise` path (bottom row) is a separate, disconnected flow through the
 same diagram — it shares no code with the timetable pipeline above it, only
 the `cli.py` entrypoint. `cli.cmd_advise` loads `coursereg.yaml` into a
-`Profile` (`coursereg.model.load_profile`), loads the permanently-cached
+`Profile` (`coursereg.model.load_profile`) — or, given an NUSMods share
+link, first generates that file through `cli._advise_setup`'s prompts
+(I/O stays in the CLI layer) — loads the permanently-cached
 demand history (`coursereg.fetch.load_history`), and hands both to
 `AdvisorState`, which computes every candidate's `Verdict`
 (`coursereg.advisor.verdict`) and a leverage-ordered suggestion

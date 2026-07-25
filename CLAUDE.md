@@ -7,7 +7,8 @@ Textual TUI, pure-functional core.
 - install: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`
 - test: `.venv/bin/pytest -q` (all tests must pass; async tests need no marker)
 - run: `.venv/bin/kairos run` | TUI: `.venv/bin/kairos tui`
-- advise: `.venv/bin/kairos advise` (CourseReg R2/R3 ranking advisor)
+- advise: `.venv/bin/kairos advise [share-url]` (CourseReg R2/R3 ranking
+  advisor; with an NUSMods link, generates coursereg.yaml via prompts first)
 
 ## Read first
 - docs/architecture.md — data flow, module map, invariants (slot_sig vs

@@ -386,8 +386,10 @@ project.
 ### coursereg.yaml reference
 
 `kairos advise` reads `coursereg.yaml` (not `config.yaml`) from the current
-directory by default. There's no `init` step for it — if the file is
-missing, it exits with an error that pastes this exact template so you can
+directory by default. You don't have to write it by hand: run
+`kairos advise <nusmods-share-url>` and it is generated for you (see
+"Running it" below). If the file is missing and no link is given, the
+command exits with an error that pastes this exact template so you can
 copy it straight in:
 
 ```yaml
@@ -418,11 +420,23 @@ candidates:
 
 ### Running it
 
+    # first time: generate coursereg.yaml from an NUSMods share link
+    .venv/bin/kairos advise 'https://nusmods.com/timetable/sem-1/share?...'
+    # after that (or with a hand-written coursereg.yaml):
     .venv/bin/kairos advise
     # or, to use a different file/cache location:
     .venv/bin/kairos advise --config coursereg.yaml --cache-dir data/coursereg
     # if you suspect the cached demand data is stale or broken:
     .venv/bin/kairos advise --refetch
+
+With a link, the semester and course codes come from the link itself (the
+lesson picks in it are ignored) and you're asked for everything else: your
+year of study `[2]`, the round `[2]`, and each course's tier
+(`core`/`major`/`ue`, default `major`, shorthands `c`/`m`/`u`). The file is
+written and the TUI opens immediately with your fresh profile. If
+`coursereg.yaml` already exists you're asked before it's overwritten
+(this discards any saved ranking); special-term links (`sem-3`/`sem-4`)
+are rejected up front since the advisor models semesters 1 and 2 only.
 
 The first run fetches and permanently caches ten semesters of demand history
 (AY2021/2022 through AY2025/2026, both semesters) under `data/coursereg/`;
