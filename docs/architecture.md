@@ -360,12 +360,25 @@ The single Textual `App` subclass, `KairosApp`, plus
   `copy_to_clipboard` is unreliable — macOS Terminal.app ignores it.
 - `BINDINGS` cover `1`–`4` (tab switch), `s` (save config), `e` (export
   ballot), `c` (copy link), `b` (toggle ballot view), `l` (toggle lock),
-  arrows and `escape` (move between the Classes and Timeslots panes), `[` and
-  `]` (reorder priority), and `q` (quit).
+  arrows and `escape` (move between panes), `[` and `]` (reorder priority),
+  and `q` (quit). Outside ballot mode, `→`/`←`/`escape` move between the
+  Classes and Timeslots panes as before. In ballot mode, `→` is a no-op —
+  the ballot list has no sibling pane to hand focus to, and its own feedback
+  (the pinned grid) only responds to the ballot list's own cursor — and
+  `←`/`escape` leave ballot view only when `#ballot-list` itself has focus
+  (checked via `has_focus`), so a stray escape from elsewhere can't blow the
+  view away.
 - `compose()` builds two columns: a left `TabbedContent` (Weights,
   Difficulty, and Times sliders plus a Priority `ListView`) and a right side
   (Timetables `ListView`, Warnings pane, Classes and Timeslots `ListView`s,
-  and a scrolling detail `Static`).
+  a scrolling detail `Static` inside `#detail-scroll`, and a sibling
+  `#ballot-view` container holding `#ballot-grid` (a pinned, compact week
+  grid `Static`), `#ballot-legend` (a `Static`), and `#ballot-list` (a
+  cursorable `ListView`, one row per ballot entry)). `#ballot-view` is a
+  sibling of `#detail-scroll`, not a child of it, because the ballot list
+  needs to be a focusable `ListView` rather than content poured into one
+  `Static`; `action_toggle_ballot` toggles `display` on the two containers
+  to switch between them.
 - `_refresh_results()` cascades. It repopulates Timetables from
   `state.top_arrangements()`, then calls `_refresh_slots()`,
   `_populate_timeslots()`, and `_refresh_detail()` — which draws either the
@@ -373,6 +386,18 @@ The single Textual `App` subclass, `KairosApp`, plus
   warnings. `on_slider_changed` and `on_list_view_highlighted` route events
   into `state.set_weight` / `set_difficulty` / `set_pref` and back into the
   cascade.
+- The ballot view splits its refresh into two methods rather than one,
+  because they run on different triggers with different cost profiles:
+  `_refresh_ballot_list()` rebuilds `#ballot-list` from `state.ballot_snake()`
+  and repaints the `●` membership gutter against the selected arrangement's
+  provenance; it runs whenever the entries or their membership can change
+  (config edits, arrangement selection, priority reorder).
+  `_refresh_ballot_grid()` repaints `#ballot-grid` with the ballot cursor's
+  slot previewed on the selected timetable (via
+  `render_week_rich(..., agenda=False)`); it runs on every ballot-list
+  cursor move. They are kept separate because rebuilding the `ListView` on
+  a cursor move would reset `ListView.index`, throwing the cursor back to
+  the top on every keypress.
 
 ### `tui/render.py`
 
@@ -385,12 +410,14 @@ A Rich, colourised, lane-aware week grid for the detail pane, parallel to
 colour. `render_week_rich(assignment, colours, preview=None, agenda=True)` draws one
 coloured strip per class per hour-span, stacking overlapping classes —
 non-clashing alternating-week twins — onto separate lanes by real time
-overlap. A text agenda below each day lists every class, including any whose
-strip could not be drawn. A `preview=(module, lesson_type, slot_sig)` either
-inverts the class's real strip in place, when the previewed slot is already
-current, or draws an extra inverted strip plus a `(preview)` agenda line.
-Reverse video again, not blink. `agenda=False` drops the per-day
-times/venues lines; the ballot view uses it so the pinned grid leaves room
+overlap. When rendered, a text agenda below each day lists every class,
+including any whose strip could not be drawn — with `agenda=False` an
+undrawable strip vanishes with no feedback at all. A
+`preview=(module, lesson_type, slot_sig)` either inverts the class's real
+strip in place, when the previewed slot is already current, or draws an
+extra inverted strip plus a `(preview)` agenda line. Reverse video again, not
+blink. `agenda=False` drops the per-day times/venues lines; the ballot view
+uses it so the pinned grid leaves room
 for the ballot list below it.
 
 ### `tui/widgets.py`

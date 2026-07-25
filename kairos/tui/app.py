@@ -115,7 +115,7 @@ class KairosApp(App):
     /* auto so a Saturday row or an extra overlap lane is never clipped;
        max-height so a busy week can't crowd out the list below it. */
     #ballot-grid { height: auto; max-height: 50%; }
-    #ballot-legend { height: auto; color: $text-muted; }
+    #ballot-legend { height: auto; background: $surface; color: $text-muted; }
     #ballot-list { height: 1fr; }
     #ballot-list ListItem { height: auto; }
     """
@@ -342,9 +342,11 @@ class KairosApp(App):
         prev = lst.index
         self._ballot_entries = self.state.ballot_snake()
         highlight = frozenset()
-        if self.state.provenance is not None and self.selected < len(
-            self.state.provenance.by_arrangement
-        ):
+        # provenance is always set by the time the ballot view can be shown:
+        # _refresh_detail only reaches this method when top_arrangements() is
+        # non-empty, and _rank_from assigns provenance in the same pass that
+        # produces those arrangements.
+        if self.selected < len(self.state.provenance.by_arrangement):
             highlight = self.state.provenance.by_arrangement[self.selected]
         with self.prevent(ListView.Highlighted):
             lst.clear()
@@ -430,12 +432,17 @@ class KairosApp(App):
             self._refresh_detail()
 
     def action_focus_timeslots(self) -> None:
+        if self.ballot_mode:
+            return  # ballot list has no sibling pane to move to; stay put
         self.query_one("#timeslot-list", ListView).focus()
         self._refresh_detail()
 
     def action_focus_classes(self) -> None:
+        # Only leave ballot view when the ballot list itself has focus, so a
+        # stray escape/← doesn't blow away the view from some other widget.
         if self.ballot_mode:
-            self.action_toggle_ballot()   # Esc/← leaves ballot view
+            if self.query_one("#ballot-list", ListView).has_focus:
+                self.action_toggle_ballot()   # Esc/← leaves ballot view
             return
         self.query_one("#slot-list", ListView).focus()
         self._refresh_detail()

@@ -210,7 +210,10 @@ def snake_rows(entries: list, provenance) -> list:
 
     Split out of render_snake so a caller needing per-entry rows -- the TUI's
     ballot ListView, which needs one widget per entry -- gets them directly
-    rather than rendering text and parsing entry boundaries back out of it."""
+    rather than rendering text and parsing entry boundaries back out of it.
+
+    Unlike render_snake, `provenance` must not be None: the best/typical
+    columns are computed from it unconditionally for every entry."""
     if not entries:
         return []
     cells = []

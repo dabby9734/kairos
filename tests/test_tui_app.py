@@ -491,16 +491,22 @@ async def test_ballot_grid_is_compact(state, tmp_path):
 async def test_ballot_preview_sig_matches_slot_sig(state, tmp_path):
     # The preview triple must be directly comparable to the sigs render_week_rich
     # matches against, i.e. Choice.slot_sig's (day, start, end, online) fields.
+    # Constrain against the actual contract: for an entry IN the selected
+    # timetable, the preview sig must equal that assignment choice's own
+    # slot_sig -- not merely a copy of _ballot_preview's own expression.
     app = KairosApp(state, tmp_path / "config.yaml")
     async with app.run_test() as pilot:
         await pilot.press("b")
         await pilot.pause()
         entry = app.state.ballot_snake()[0]
+        assert (entry.module, entry.lesson_type, entry.class_no) == (
+            "ALPHA", "Tutorial", "01",
+        )  # verify entry 0 is in the selected arrangement before relying on it
         module, lesson_type, sig = app._ballot_preview(entry)
         assert (module, lesson_type) == (entry.module, entry.lesson_type)
-        assert sig == frozenset(
-            (s.day, s.start, s.end, s.online) for s in entry.sessions
-        )
+        top = app.state.top_arrangements()
+        assignment = top[app.selected].assignment
+        assert sig == assignment[(entry.module, entry.lesson_type)].slot_sig
 
 
 async def test_ballot_membership_marker_tracks_selected_timetable(state, tmp_path):
@@ -549,6 +555,112 @@ async def test_ballot_list_rebuild_preserves_cursor(state, tmp_path):
         app._refresh_ballot_list()
         await pilot.pause()
         assert lst.index == 2  # a rebuild must not throw the cursor to the top
+
+
+async def test_ballot_cursor_move_repaints_grid(state, tmp_path):
+    from rich.console import Console
+
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.press("b")
+        await pilot.pause()
+        lst = app.query_one("#ballot-list", ListView)
+        console = Console(width=200)
+
+        def grid_text():
+            with console.capture() as cap:
+                console.print(app.query_one("#ballot-grid", Static)._Static__content)
+            return cap.get()
+
+        lst.index = 0
+        await pilot.pause()
+        text_at_0 = grid_text()
+
+        lst.index = 2
+        await pilot.pause()
+        text_at_2 = grid_text()
+
+        # Not merely non-empty: the two previews land on different slots, so
+        # the rendered grid must actually differ, not freeze on entry 0.
+        assert text_at_0 != text_at_2
+
+
+async def test_ballot_in_timetable_bid_inverts_not_adds_a_strip(state, tmp_path):
+    # The spec's central semantic distinction: a bid naming the class already
+    # on that slot (flash mode) inverts the existing strip in place, while a
+    # bid naming a different slot draws an extra candidate strip.
+    from rich.console import Console
+
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.press("b")
+        await pilot.pause()
+        entries = app.state.ballot_snake()
+        in_entry, out_entry = entries[0], entries[2]
+        assert (in_entry.module, in_entry.lesson_type, in_entry.class_no) == (
+            "ALPHA", "Tutorial", "01",
+        )
+        assert (out_entry.module, out_entry.lesson_type, out_entry.class_no) == (
+            "BETA", "Laboratory", "L1",
+        )
+
+        # Verify the stated in/out-of-timetable split actually holds before
+        # relying on it: entry 0's keys are in the selected arrangement's
+        # provenance, entry 2's are not.
+        highlight = app.state.provenance.by_arrangement[app.selected]
+        in_keys = {
+            (in_entry.module, in_entry.lesson_type, cn)
+            for cn in [in_entry.class_no, *in_entry.tied_with]
+        }
+        out_keys = {
+            (out_entry.module, out_entry.lesson_type, cn)
+            for cn in [out_entry.class_no, *out_entry.tied_with]
+        }
+        assert in_keys & highlight
+        assert not (out_keys & highlight)
+
+        lst = app.query_one("#ballot-list", ListView)
+        console = Console(width=200)
+
+        def beta_strip_count():
+            with console.capture() as cap:
+                console.print(app.query_one("#ballot-grid", Static)._Static__content)
+            # agenda=False, so every occurrence of the module code is a strip
+            # label, not agenda text.
+            return cap.get().count("BETA")
+
+        lst.index = 0  # in-timetable bid: no change to BETA's strip count
+        await pilot.pause()
+        count_in = beta_strip_count()
+
+        lst.index = 2  # out-of-timetable bid: an extra BETA strip appears
+        await pilot.pause()
+        count_out = beta_strip_count()
+
+        assert count_out != count_in
+        assert count_out == count_in + 1
+
+
+async def test_ballot_escape_exits_only_from_ballot_list_focus(state, tmp_path):
+    app = KairosApp(state, tmp_path / "config.yaml")
+    async with app.run_test() as pilot:
+        await pilot.press("b")
+        await pilot.pause()
+        assert app.ballot_mode is True
+        assert app.query_one("#ballot-list", ListView).has_focus
+
+        # -> must not strand the cursor: ballot mode has no sibling pane, so
+        # focus stays on the ballot list.
+        await pilot.press("right")
+        await pilot.pause()
+        assert app.ballot_mode is True
+        assert app.query_one("#ballot-list", ListView).has_focus
+
+        # escape, with the ballot list focused, leaves ballot view.
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.ballot_mode is False
+        assert app.query_one("#ballot-view").display is False
 
 
 async def test_week_grid_gets_more_height_than_the_top_row(state, tmp_path):

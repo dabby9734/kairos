@@ -30,8 +30,10 @@ def render_week_rich(assignment: dict, colours: dict, preview=None, agenda=True)
     its hours, labelled `MODULE [TYPE]` (or just `MODULE` when the strip is too
     narrow), with an agenda of times/venues below each day. Classes whose times
     overlap (non-clashing alternating-week pairs sharing a slot) are stacked on
-    separate lanes so every class gets a visible bar; the agenda below always
-    lists every class, even one whose strip is undrawable.
+    separate lanes so every class gets a visible bar; when the agenda is
+    rendered (see `agenda` below) it always lists every class, even one whose
+    strip is undrawable -- with `agenda=False` an undrawable strip vanishes
+    with no feedback at all.
 
     `preview` is an optional `(module, lesson_type, slot_sig)` triple for the
     timeslot the user is currently highlighting. If that class is already on this
