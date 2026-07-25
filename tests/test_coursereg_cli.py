@@ -112,3 +112,47 @@ def test_advise_setup_rejects_special_term_before_prompting(tmp_path, monkeypatc
     with pytest.raises(SystemExit, match="special term"):
         _advise_setup(url, config_path)
     assert config_path.read_text() == "existing: true"
+
+
+def test_advise_with_link_generates_config_then_launches_tui(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    answers = iter(["1", "2", "m", "core", "ue"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    monkeypatch.setattr(
+        "kairos.coursereg.fetch.load_history", lambda cache_dir, refetch=False: []
+    )
+    captured = {}
+    monkeypatch.setattr(
+        "kairos.coursereg.tui.app.run_advisor",
+        lambda state, config_path: captured.update(
+            profile=state.profile, config_path=config_path
+        ),
+    )
+
+    main(["advise", ADVISE_URL])
+
+    written = yaml.safe_load(Path("coursereg.yaml").read_text())
+    assert written["candidates"] == {"CS2109S": "major", "GEH1049": "core", "MA2001": "ue"}
+    assert captured["profile"].semester == 2
+    assert captured["profile"].seniority == 1
+    assert captured["config_path"] == Path("coursereg.yaml")
+
+
+def test_advise_without_link_still_loads_profile(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    Path("coursereg.yaml").write_text(
+        "seniority: 2\nsemester: 1\nround: 2\ncandidates:\n  CS2109S: major\n"
+    )
+    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("prompted"))
+    monkeypatch.setattr(
+        "kairos.coursereg.fetch.load_history", lambda cache_dir, refetch=False: []
+    )
+    captured = {}
+    monkeypatch.setattr(
+        "kairos.coursereg.tui.app.run_advisor",
+        lambda state, config_path: captured.update(profile=state.profile),
+    )
+
+    main(["advise"])
+
+    assert captured["profile"].tiers == {"CS2109S": "major"}

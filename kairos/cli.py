@@ -249,9 +249,13 @@ def cmd_advise(args) -> None:
     from .coursereg.tui.app import run_advisor
     from .coursereg.tui.state import AdvisorState
 
-    profile = load_profile(Path(args.config))
+    config_path = Path(args.config)
+    if args.share_url:
+        profile = _advise_setup(args.share_url, config_path)
+    else:
+        profile = load_profile(config_path)
     records = load_history(Path(args.cache_dir), refetch=args.refetch)
-    run_advisor(AdvisorState(profile, records), Path(args.config))
+    run_advisor(AdvisorState(profile, records), config_path)
 
 
 def _add_common_flags(subparser, dest_prefix: str) -> None:
@@ -294,6 +298,10 @@ def main(argv: list | None = None) -> None:
 
     advise_parser = subparsers.add_parser(
         "advise", help="CourseReg R2/R3 ranking advisor (what-if TUI)"
+    )
+    advise_parser.add_argument(
+        "share_url", nargs="?",
+        help="NUSMods share URL — asks setup questions and writes coursereg.yaml first",
     )
     # advise has its OWN config/cache defaults (coursereg.yaml, data/coursereg)
     # rather than _add_common_flags: the generic merge in main() would fall
