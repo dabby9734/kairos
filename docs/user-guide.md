@@ -341,8 +341,11 @@ available for the ballot. If locking would leave no clash-free timetable at
 all, kairos refuses and shows a toast instead of applying it.
 
 Other keys: `[` / `]` move the highlighted module up/down the priority list
-(Priority tab); `b` toggles the ballot view, highlighting the classes that
-belong to the currently-selected timetable; `s` saves the current tuning back
+(Priority tab); `b` toggles the ballot view, which pins a compact week grid above the ballot
+list: arrow down the list and the grid highlights the timeslot that ballot
+position bids for, either inverting the class's existing strip or drawing the
+candidate strip beside it. A `●` in the left gutter marks the rows belonging to
+the currently-selected timetable. Esc returns to the timetable view.; `s` saves the current tuning back
 to your config file; `e` exports the ballot to `ballot.txt` next to it; `c`
 copies the selected timetable's NUSMods share link to your OS clipboard
 (falling back to an OSC-52 terminal escape, useful over SSH, if the OS
@@ -356,10 +359,11 @@ Full keybinding table:
 | ← / → (on a slider) | adjust the highlighted value |
 | ↑ / ↓ (on a slider) | move between sliders in the tab |
 | → | focus the Timeslots pane for the highlighted class |
-| ← / Esc | back to the Classes pane |
+| ← / Esc | back to the Classes pane (or out of the ballot view) |
 | `l` | lock/unlock the highlighted timeslot |
 | `[` / `]` | move the highlighted module up/down in priority |
 | `b` | toggle the ballot view |
+| ↑ / ↓ (in the ballot view) | move the ballot cursor; the grid previews that slot |
 | `s` | save config.yaml |
 | `e` | export ballot.txt |
 | `c` | copy the selected timetable's NUSMods link |

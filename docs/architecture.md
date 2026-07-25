@@ -244,8 +244,7 @@ Cross-arrangement statistics, always uncapped.
 
 Presentation only, shared by `cli`'s prints and the TUI's `Static` widgets.
 It renders already-scored, already-assigned data and never touches
-`EnumeratedSpace` or ranking. Only `render_snake_rich` imports Rich, and it
-does so lazily, so the plain-text paths stay Rich-free.
+`EnumeratedSpace` or ranking. It imports no Rich at all: every Rich renderable is built in `tui/render.py`.
 
 - `WEEKDAYS`, `GRID_HOURS = range(8, 21)`, and `CELL = 8` lay out the week
   grid. `_render_days(assignment, extra_days=None)` always covers
@@ -259,11 +258,12 @@ does so lazily, so the plain-text paths stay Rich-free.
   re-derives the same conditions `scoring.score_assignment` scores, so a
   warning and the score can never disagree. It skips any criterion weighted 0
   and suppresses same-day-pairing warnings for `unpairable_slots`.
-- `render_options`, `render_snake`, and `render_snake_rich` draw the
-  backup-choices table and the snake-order ballot, with best/typical tier
-  columns when given a `Provenance`. `render_snake_rich` also highlights the
-  selected arrangement's rows using reverse video, not blink, because
-  Terminal.app ignores SGR 5.
+- `render_options`, `render_snake`, and `snake_rows` draw the backup-choices
+  table and the snake-order ballot, with best/typical tier columns when given a
+  `Provenance`. `snake_rows` returns one `(entry, line, continuation)` triple
+  per ballot entry and `snake_legend` the two explanatory lines above them;
+  `render_snake` joins both. The TUI consumes the rows directly so its ballot
+  `ListView` gets one item per entry.
 
 ### `cli.py`
 
@@ -381,14 +381,15 @@ A Rich, colourised, lane-aware week grid for the detail pane, parallel to
 
 `PALETTE` holds 8 `(background, foreground)` pairs and
 `module_colours(modules)` assigns them in order for a stable per-module
-colour. `render_week_rich(assignment, colours, preview=None)` draws one
+colour. `render_week_rich(assignment, colours, preview=None, agenda=True)` draws one
 coloured strip per class per hour-span, stacking overlapping classes —
 non-clashing alternating-week twins — onto separate lanes by real time
 overlap. A text agenda below each day lists every class, including any whose
 strip could not be drawn. A `preview=(module, lesson_type, slot_sig)` either
 inverts the class's real strip in place, when the previewed slot is already
 current, or draws an extra inverted strip plus a `(preview)` agenda line.
-Reverse video again, not blink.
+Reverse video again, not blink. `agenda=False` drops the per-day times/venues lines; the ballot view uses it so
+the pinned grid leaves room for the ballot list below it.
 
 ### `tui/widgets.py`
 
