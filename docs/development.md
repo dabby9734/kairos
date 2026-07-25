@@ -104,9 +104,10 @@ fetched with `app.query_one(...)`. No `@pytest.mark.asyncio` needed —
 - **User-facing errors**: raise `SystemExit(f"error: ...")` — see
   `kairos/api.py`, `kairos/config.py`, `kairos/cli.py`, `kairos/search.py`,
   `kairos/tui/startup.py` for the existing pattern.
-- **Comments explain why, not what** — e.g. `render_snake_rich`'s docstring
-  in `kairos/output.py` notes *"Reverse, not blink: Terminal.app ignores SGR
-  5, so a blinking affordance is invisible for some users."*
+- **Comments explain why, not what** — e.g. the comment at
+  `kairos/tui/render.py:136` notes *"Deliberately not blink: Apple
+  Terminal.app ignores SGR 5, which would leave flash mode with no signal at
+  all there."*
 - **Terminal compatibility**: no SGR blink for highlights; use reverse video
   instead (`kairos/output.py`, `kairos/tui/render.py` both do this
   deliberately — Terminal.app silently drops blink).

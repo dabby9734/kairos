@@ -345,7 +345,7 @@ Other keys: `[` / `]` move the highlighted module up/down the priority list
 list: arrow down the list and the grid highlights the timeslot that ballot
 position bids for, either inverting the class's existing strip or drawing the
 candidate strip beside it. A `●` in the left gutter marks the rows belonging to
-the currently-selected timetable. Esc returns to the timetable view.; `s` saves the current tuning back
+the currently-selected timetable. Esc returns to the timetable view. `s` saves the current tuning back
 to your config file; `e` exports the ballot to `ballot.txt` next to it; `c`
 copies the selected timetable's NUSMods share link to your OS clipboard
 (falling back to an OSC-52 terminal escape, useful over SSH, if the OS

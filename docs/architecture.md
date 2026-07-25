@@ -244,7 +244,8 @@ Cross-arrangement statistics, always uncapped.
 
 Presentation only, shared by `cli`'s prints and the TUI's `Static` widgets.
 It renders already-scored, already-assigned data and never touches
-`EnumeratedSpace` or ranking. It imports no Rich at all: every Rich renderable is built in `tui/render.py`.
+`EnumeratedSpace` or ranking. It imports no Rich at all: every Rich
+renderable is built in `tui/render.py`.
 
 - `WEEKDAYS`, `GRID_HOURS = range(8, 21)`, and `CELL = 8` lay out the week
   grid. `_render_days(assignment, extra_days=None)` always covers
@@ -388,8 +389,9 @@ overlap. A text agenda below each day lists every class, including any whose
 strip could not be drawn. A `preview=(module, lesson_type, slot_sig)` either
 inverts the class's real strip in place, when the previewed slot is already
 current, or draws an extra inverted strip plus a `(preview)` agenda line.
-Reverse video again, not blink. `agenda=False` drops the per-day times/venues lines; the ballot view uses it so
-the pinned grid leaves room for the ballot list below it.
+Reverse video again, not blink. `agenda=False` drops the per-day
+times/venues lines; the ballot view uses it so the pinned grid leaves room
+for the ballot list below it.
 
 ### `tui/widgets.py`
 
