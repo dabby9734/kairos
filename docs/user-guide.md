@@ -180,6 +180,16 @@ Key by key:
   slot in play. So if two classes run at the same time in different venues,
   or on alternating weeks, locking one still leaves its "twin" available as
   an interchangeable ballot option. This is what the TUI's `l` key writes.
+- **`accept`** — narrow a class group to certain timeslots: `accept:
+  {MODULE: {ABBREV: [class_no, ...]}}`. Each class number designates its
+  **timeslot** (like `locked` does), so venue and teaching-week twins at
+  that slot stay available for the ballot. Absent or empty means every slot
+  is acceptable — a forgotten group can never submit an empty list. Precedence:
+  `fixed` > `locked` > `accept` > all. Because the restriction lands at space
+  construction, the timetable search narrows too, not just the ballot.
+  **Important:** `accept` does not deconflict. Two accepted slots in different
+  modules can still overlap, and the ballot may list both; resolving that
+  conflict is your call. This is what the TUI's `a` key writes.
 - **`priority`** — your modules, most important first. Used as the primary
   sort key for the ballot's snake ordering: every module's best remaining
   option is offered before any module's second-best. Within a module,
@@ -340,6 +350,13 @@ semantics as the `locked` config key, so venue/week twins at that slot stay
 available for the ballot. If locking would leave no clash-free timetable at
 all, kairos refuses and shows a toast instead of applying it.
 
+**Timeslots pane** (after pressing →): shows every offered slot for the
+highlighted class group. Press `a` to accept or reject the highlighted
+timeslot — a `✗` marks rejected slots. An untouched group is fully acceptable,
+so the first press *rejects* that one slot (restricting to it would duplicate
+the `l` lock behavior). Press `a` again to add it back. If toggling would
+leave no clash-free timetable for this group, kairos refuses with a toast.
+
 Other keys: `[` / `]` move the highlighted module up/down the priority list
 (Priority tab); `b` toggles the ballot view, which pins a compact week grid above the ballot
 list: arrow down the list and the grid highlights the timeslot that ballot
@@ -361,6 +378,7 @@ Full keybinding table:
 | → | focus the Timeslots pane for the highlighted class |
 | ← / Esc | back to the Classes pane (or out of the ballot view) |
 | `l` | lock/unlock the highlighted timeslot |
+| `a` | accept/reject the highlighted timeslot |
 | `[` / `]` | move the highlighted module up/down in priority |
 | `b` | toggle the ballot view |
 | ↑ / ↓ (in the ballot view) | move the ballot cursor; the grid previews that slot |
@@ -371,6 +389,12 @@ Full keybinding table:
 
 ## FAQ / gotchas
 
+- **Accept writes while locked.** If you press `a` on a timeslot in a group
+  you've locked, the app records your choice to `accept` and shows `✗`
+  markers. However, `prepare_groups` checks `locked` first and ignores `accept`
+  for locked groups, so your timetable doesn't move until you unlock. Once you
+  clear the lock, `accept` takes effect. This is expected — the lock has
+  priority, and the accept list applies once it's gone.
 - **Online classes** (venue starting with `E-Learn`) don't count against your
   time window or lunch-break check, but they *do* count toward daily
   difficulty — a fully-online day can still trip the `tough_days` criterion.

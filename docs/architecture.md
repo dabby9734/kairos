@@ -118,11 +118,16 @@ The YAML schema and its defaults.
 
 The enumeration and ranking engine, and the largest module.
 
-- `prepare_groups(groups, config)` narrows each group. It checks `fixed`
-  first and finalizes the group with `continue`, so `fixed` wins whenever a
-  group somehow has both pins. It then checks `locked`, keeping every choice
-  that shares the named class's `slot_sig`. Otherwise it warns when a
-  non-balloted group still offers several choices.
+- `prepare_groups(groups, config)` narrows each group via a four-tier
+  precedence cascade: `fixed` > `locked` > `accept` > all. It checks `fixed`
+  first and finalizes with `continue`, so `fixed` wins when a group has both.
+  It then checks `locked`, keeping every choice sharing the named class's
+  `slot_sig`. If neither, it checks `accept`, keeping choices whose `slot_sig`
+  matches one of the listed class numbers (each number designates a timeslot,
+  so venue/week twins at that slot stay available). Otherwise it warns when a
+  non-balloted group still offers several choices. Because narrowing happens
+  at space construction, every downstream consumer inherits the restriction —
+  `ballot.py` needs no knowledge of the feature.
 - `find_irreconcilable(groups)` returns the first group pair whose every
   choice clashes with the other's — the source of the "every X clashes with
   every Y" message.
